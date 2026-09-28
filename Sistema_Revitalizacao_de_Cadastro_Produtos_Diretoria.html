@@ -83,6 +83,16 @@ tbody tr.edited{background:var(--amarelo)!important}
 .ia-ncm-recommend p{font-size:13px;margin:0 0 10px;opacity:.95}
 .ia-ncm-recommend .btn{background:#fff;color:#0f766e}
 .ia-ncm-recommend-empty{background:#fef3c7;color:#92610a;font-size:13px;padding:12px 14px}
+.ia-ncm-compare{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.ia-ncm-box{border-radius:10px;padding:10px 12px;text-align:center}
+.ia-ncm-box-red{background:#fee;border:1px solid #fca5a5}
+.ia-ncm-box-green{background:#d1fae5;border:1px solid #6ee7b7}
+.ia-ncm-box-label{font-size:10px;text-transform:uppercase;letter-spacing:.03em;display:block;margin-bottom:4px}
+.ia-ncm-box-red .ia-ncm-box-label{color:#b91c1c}
+.ia-ncm-box-green .ia-ncm-box-label{color:#047857}
+.ia-ncm-box-code{font-size:16px;font-weight:800}
+.ia-ncm-box-red .ia-ncm-box-code{color:#b91c1c}
+.ia-ncm-box-green .ia-ncm-box-code{color:#047857}
 .ia-suggestion-head{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px}
 .ia-just{color:var(--muted);font-size:12px}
 .ia-alert{font-size:13px;padding:4px 0;display:flex;gap:6px;align-items:flex-start}
@@ -1041,16 +1051,9 @@ Regras obrigatórias:
 Nunca inclua texto, markdown ou comentários fora do objeto JSON.`;
 function geminiApiKey(){ return (localStorage.getItem('emtel_gemini_key')||'').trim(); }
 function setGeminiApiKey(v){ localStorage.setItem('emtel_gemini_key', (v||'').trim()); }
-function iaBuildUserPrompt(product){
-  const descKey = Object.keys(product).find(k=>/descric/i.test(k));
-  const descValue = descKey ? String(product[descKey]??'').trim() : '';
-  const lines = Object.entries(product)
-    .filter(([k,v])=>k!==descKey && v!==null && v!==undefined && String(v).trim()!=='')
-    .slice(0,40)
-    .map(([k,v])=>String(k).slice(0,100)+': '+String(v).slice(0,500));
-  return 'Audite o seguinte cadastro de produto e responda no formato JSON definido nas instruções do sistema.\n\n'
-    +'Descrição do produto (base principal para o NCM): '+(descValue||'(não informada)')+'\n\n'
-    +'Demais dados do produto:\n'+lines.join('\n');
+// só a descrição/nome do produto — pedido mais enxuto = resposta mais rápida da IA
+function iaBuildUserPrompt(descricao){
+  return 'Classifique o NCM do produto a seguir, a partir só do nome/descrição, e responda no formato JSON definido nas instruções do sistema.\n\nProduto: '+(String(descricao||'').trim()||'(não informado)');
 }
 let iaCtx = null;
 const iaHistory = JSON.parse(localStorage.getItem('emtel_ia_history')||'[]');
@@ -1061,12 +1064,6 @@ function iaStoreHistory(){
 }
 function iaUserName(){ return (localStorage.getItem('emtel_review_user')||'').trim(); }
 function iaToast(msg){const t=document.createElement('div');t.className='ia-toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),3200);}
-function iaProductFields(sheet, idx){
-  const d = DATA[sheet]; if(!d) return {};
-  const row = getRow(sheet, idx), obj = {};
-  d.headers.forEach((h,i)=>{ if(h) obj[h] = row[i]; });
-  return obj;
-}
 function iaProductLabel(sheet, idx){
   const d = DATA[sheet], row = getRow(sheet, idx);
   const ci = d.headers.findIndex(h=>/^codigo$|^código$/i.test(h));
@@ -1091,18 +1088,29 @@ function iaBadge(level){
 }
 function iaStatusLevel(status){ return status==='compativel'?'verde':(status==='possivel_incorreto'?'vermelho':'amarelo'); }
 
-function iaResultHtml(a){
+function iaResultHtml(a, ncmCadastrado){
   if(!a) return '<div class="ia-empty">Sem resultado.</div>';
   const diag = a.diagnostico||{}, ncmAtual = a.ncm_atual||{};
   const sugestoes = Array.isArray(a.ncm_sugerido)?a.ncm_sugerido:[];
   const alertas = Array.isArray(a.alertas)?a.alertas:[];
   const top = sugestoes[0];
+  const houveMudanca = top && top.codigo && ncmCadastrado && String(top.codigo).trim()!==String(ncmCadastrado).trim();
   return `
+    <div class="ia-ncm-compare">
+      <div class="ia-ncm-box ia-ncm-box-red">
+        <span class="ia-ncm-box-label">🔴 NCM cadastrado hoje</span>
+        <div class="ia-ncm-box-code">${escapeHtml(ncmCadastrado||'—')}</div>
+      </div>
+      <div class="ia-ncm-box ia-ncm-box-green">
+        <span class="ia-ncm-box-label">🟢 NCM correto a usar</span>
+        <div class="ia-ncm-box-code">${top?escapeHtml(top.codigo||'—'):'—'}</div>
+      </div>
+    </div>
     ${top?`<div class="ia-ncm-recommend">
-      <span class="ia-ncm-recommend-label">📌 NCM recomendado com base na descrição</span>
+      <span class="ia-ncm-recommend-label">📌 ${houveMudanca?'NCM recomendado (diferente do atual)':'NCM recomendado — igual ao cadastrado'}</span>
       <div class="ia-ncm-recommend-code">${escapeHtml(top.codigo||'—')}</div>
       <p>${escapeHtml(top.descricao||'')}</p>
-      <button class="btn small" onclick="iaApplyNcm('${String(top.codigo||'').replace(/'/g,"\\'")}')">Aplicar este NCM</button>
+      ${houveMudanca?`<button class="btn small" onclick="iaApplyNcm('${String(top.codigo||'').replace(/'/g,"\\'")}')">Aplicar este NCM</button>`:''}
     </div>`:`<div class="ia-ncm-recommend ia-ncm-recommend-empty">📌 A IA não conseguiu sugerir um NCM — descrição curta/genérica demais. Veja a justificativa abaixo.</div>`}
     <div class="ia-section"><h4>Diagnóstico</h4>
       <div class="ia-diag-row">${iaBadge(diag.cadastro)} Cadastro</div>
@@ -1132,6 +1140,8 @@ function renderIaDrawer(){
   if(!iaCtx) return;
   const {sheet, idx} = iaCtx, key = sheet+'|'+idx;
   const {codigo, descricao} = iaProductLabel(sheet, idx);
+  const ncmIdx = iaNcmIdx(sheet);
+  const ncmCadastrado = ncmIdx>=0 ? String(getRow(sheet, idx)[ncmIdx]??'') : '';
   const last = iaLastResultFor(key);
   document.getElementById('iaDrawer').innerHTML = `
     <div class="ia-head">
@@ -1140,7 +1150,7 @@ function renderIaDrawer(){
     </div>
     <div class="ia-product"><b>${escapeHtml(descricao||'—')}</b><span>Código: ${escapeHtml(codigo)}</span></div>
     <button class="btn ia-analyze" onclick="iaAnalyze()">🤖 Analisar com IA</button>
-    <div id="iaBody">${last?iaResultHtml(last.result):'<div class="ia-empty">Nenhuma análise ainda. Clique em "Analisar com IA".</div>'}</div>
+    <div id="iaBody">${last?iaResultHtml(last.result, ncmCadastrado):'<div class="ia-empty">Nenhuma análise ainda. Clique em "Analisar com IA".</div>'}</div>
     <button class="btn gray" style="width:100%" onclick="iaShowHistory()">Ver histórico da análise</button>
   `;
 }
@@ -1155,27 +1165,28 @@ async function iaAnalyze(){
     body.innerHTML = '<div class="ia-error">Nenhuma chave do Google Gemini configurada neste navegador.<br><small>Vá em <b>Configurações</b> → "IA Fiscal (Google Gemini)", gere uma chave grátis em <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> e cole ali.</small></div>';
     return;
   }
-  const steps = ['Lendo cadastro','Analisando descrição','Verificando NCM','Comparando classificação','Verificando informações fiscais','Gerando recomendações'];
+  const steps = ['Lendo nome do produto','Classificando NCM','Gerando recomendação'];
   body.innerHTML = '<div class="ia-loading"><b>Analisando produto...</b><ul>'+steps.map(s=>`<li>${escapeHtml(s)}</li>`).join('')+'</ul></div>';
   const liList = body.querySelectorAll('.ia-loading li');
   let step=0;
-  const stepTimer = setInterval(()=>{ if(step<liList.length){ liList[step].classList.add('done'); step++; } }, 380);
-  const product = iaProductFields(sheet, idx);
+  const stepTimer = setInterval(()=>{ if(step<liList.length){ liList[step].classList.add('done'); step++; } }, 220);
+  const {descricao: nomeProduto} = iaProductLabel(sheet, idx);
   const sleep = ms => new Promise(r=>setTimeout(r, ms));
   const loadingMsg = document.querySelector('.ia-loading b');
   // sem responseMimeType:'application/json' de propósito — esse modo "estruturado" parece
   // ficar sobrecarregado com mais frequência; já extraímos o JSON da resposta por regex.
+  // Pedido enxuto (só o nome/descrição do produto) = resposta mais rápida da IA.
   const requestBody = JSON.stringify({
     system_instruction: { parts: [{ text: GEMINI_SYSTEM_PROMPT }] },
-    contents: [{ role:'user', parts: [{ text: iaBuildUserPrompt(product) }] }],
-    generationConfig: { maxOutputTokens: 1500 }
+    contents: [{ role:'user', parts: [{ text: iaBuildUserPrompt(nomeProduto) }] }],
+    generationConfig: { maxOutputTokens: 800 }
   });
   let res, rawText, networkFailed = false;
   // tenta cada modelo da lista (com repetição em 503/overload) antes de desistir — se um
   // modelo estiver sobrecarregado ou tiver sido descontinuado, cai pro próximo automaticamente.
   modelLoop:
   for(const model of GEMINI_MODELS){
-    const maxAttempts = 3, backoffs = [0, 2200, 5000];
+    const maxAttempts = 2, backoffs = [0, 1200];
     for(let attempt=0; attempt<maxAttempts; attempt++){
       if(attempt>0 && loadingMsg) loadingMsg.textContent = 'Servidor da IA ocupado, tentando de novo ('+(GEMINI_MODELS.indexOf(model)+1)+'/'+GEMINI_MODELS.length+')...';
       else if(GEMINI_MODELS.indexOf(model)>0 && loadingMsg) loadingMsg.textContent = 'Tentando modelo alternativo da IA ('+(GEMINI_MODELS.indexOf(model)+1)+'/'+GEMINI_MODELS.length+')...';
@@ -1237,7 +1248,7 @@ async function iaAnalyze(){
   iaHistory.unshift(entry);
   iaStoreHistory();
   iaSyncHistory(entry);
-  body.innerHTML = iaResultHtml(analysis);
+  body.innerHTML = iaResultHtml(analysis, ncmAtual);
 }
 
 function iaApplyNcm(codigo){
