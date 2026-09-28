@@ -220,8 +220,10 @@ header img#logo{width:176px;height:64px;min-width:176px;object-fit:contain;objec
 </div>
 <script>
 // checa a sessão de acesso o quanto antes, pra não "piscar" o site antes da tela de senha
+// sessionStorage (não localStorage): a sessão não sobrevive a fechar a aba nem é
+// compartilhada com uma aba/janela nova — cada uma pede a senha de novo.
 try{
-  var accessUntil = Number(localStorage.getItem('emtel_access_until')||0);
+  var accessUntil = Number(sessionStorage.getItem('emtel_access_until')||0);
   if(accessUntil > Date.now()){
     document.getElementById('accessGate').classList.add('hidden');
   } else {
@@ -253,16 +255,17 @@ try{
 <script>
 // ===== ACESSO RESTRITO: uma unica senha geral para entrar no site =====
 // Gate 100% client-side (site estatico sem backend/login) -- a "sessao" e so um
-// timestamp de expiracao salvo no localStorage; a senha em si fica visivel pra
-// quem inspecionar o codigo-fonte, igual as demais chaves publicas deste site.
+// timestamp de expiracao salvo no sessionStorage (por aba: fechar a aba ou abrir
+// uma nova pede a senha de novo); a senha em si fica visivel pra quem inspecionar
+// o codigo-fonte, igual as demais chaves publicas deste site.
 const ACCESS_PASSWORD = 'Emtel2026@';
 const ACCESS_SESSION_KEY = 'emtel_access_until';
-const ACCESS_SESSION_MS = 12*60*60*1000; // sessao valida por 12h
+const ACCESS_SESSION_MS = 12*60*60*1000; // teto de validade dentro da mesma aba: 12h
 function tryAccessLogin(){
   const input = document.getElementById('accessPasswordInput');
   const err = document.getElementById('accessGateError');
   if(input && input.value === ACCESS_PASSWORD){
-    localStorage.setItem(ACCESS_SESSION_KEY, String(Date.now()+ACCESS_SESSION_MS));
+    sessionStorage.setItem(ACCESS_SESSION_KEY, String(Date.now()+ACCESS_SESSION_MS));
     document.getElementById('accessGate').classList.add('hidden');
     document.body.classList.remove('access-locked');
     if(err) err.style.display = 'none';
@@ -273,7 +276,7 @@ function tryAccessLogin(){
   }
 }
 function logoutAccessGate(){
-  localStorage.removeItem(ACCESS_SESSION_KEY);
+  sessionStorage.removeItem(ACCESS_SESSION_KEY);
   location.reload();
 }
 (function(){
