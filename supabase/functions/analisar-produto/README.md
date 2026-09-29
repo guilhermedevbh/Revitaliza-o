@@ -172,3 +172,34 @@ alter publication supabase_realtime add table public.historico_acoes;
 ```
 
 A partir dessa migração, qualquer ação registrada no histórico (validar, editar, excluir, separar para desativação, desfazer etc.) de qualquer usuário aparece para todos, em tempo real.
+
+## 10. Relatório de Produtos Validados (histórico de validações/alterações por campo)
+
+Alimenta a aba "🧾 Produtos Validados": para cada produto, registra se foi validado sem alteração ou com alteração de campo (com valor anterior e novo), por usuário e data. Rode no **SQL Editor**:
+
+```sql
+create table public.historico_validacao_produtos (
+  id text primary key,
+  validacao_id text,
+  produto_key text not null,
+  codigo text,
+  descricao text,
+  filial text,
+  ncm text,
+  usuario text,
+  sofreu_alteracao boolean not null default false,
+  campo_alterado text,
+  valor_anterior text,
+  valor_novo text,
+  criado_em timestamptz not null default now()
+);
+
+alter table public.historico_validacao_produtos enable row level security;
+
+create policy "leitura publica" on public.historico_validacao_produtos for select using (true);
+create policy "insercao publica" on public.historico_validacao_produtos for insert with check (true);
+
+alter publication supabase_realtime add table public.historico_validacao_produtos;
+```
+
+A partir dessa migração, a aba "Produtos Validados" mostra em tempo real, para todos os usuários: quantos produtos foram validados sem alteração, quantos tiveram algum campo alterado, o total de alterações e o histórico completo (campo, valor anterior, valor novo, usuário e data) de cada produto.

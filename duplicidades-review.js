@@ -22,6 +22,7 @@
   const history=readStoredArray('emtel_duplicate_history');
   const deactivationReport=readStoredArray('emtel_deactivation_report');
   const activeReport=readStoredArray('emtel_active_report');
+  const validationHistory=readStoredArray('emtel_validation_history');
   deactivationReport.filter(x=>x.status==='Selecionado').forEach(x=>selectedForDeletion.add(Number(x.idx)));
   const originalRender=window.render;
   const originalSave=window.saveModal;
@@ -170,6 +171,63 @@
   }
   function addToDeactivationReport(idx,reason){const key=reportKey(idx),data=reportProductData(idx),existing=deactivationReport.find(x=>x.key===key&&x.status==='Selecionado');let item;if(existing){Object.assign(existing,data,{reason,selectedAt:new Date().toISOString(),user:user()});item=existing}else{item=Object.assign({key,idx},data,{reason,selectedAt:new Date().toISOString(),user:user(),status:'Selecionado'});deactivationReport.unshift(item)}saveDeactivationReport();desativacaoUpsert(item)}
   function removeFromDeactivationReport(idx){const key=reportKey(idx);for(let i=deactivationReport.length-1;i>=0;i--)if(deactivationReport[i].key===key&&deactivationReport[i].status==='Selecionado')deactivationReport.splice(i,1);saveDeactivationReport();desativacaoDelete(key)}
+  // ===== Relatório de Produtos Validados: histórico de validações/alterações por produto =====
+  // Cada evento é 1 linha: uma validação sem alteração (campoAlterado=null) ou 1 campo alterado
+  // (campoAlterado/valorAnterior/valorNovo preenchidos). Vários campos alterados na mesma ação
+  // de salvar compartilham o mesmo validacaoId, pra contar "produtos alterados" x "total de alterações".
+  function saveValidationHistory(){safeLocalSet('emtel_validation_history',JSON.stringify(validationHistory.slice(0,10000)))}
+  function logValidationEvent(idx,opts){
+    const key=reportKey(idx),data=reportProductData(idx);
+    const entry={
+      id:genId(), validacaoId:(opts&&opts.validacaoId)||genId(), produtoKey:key,
+      codigo:data.code, descricao:data.description, filial:data.branch, ncm:data.ncm,
+      usuario:user(), sofreuAlteracao:!!(opts&&opts.sofreuAlteracao),
+      campoAlterado:(opts&&opts.campoAlterado)||null,
+      valorAnterior:(opts&&opts.valorAnterior!=null)?String(opts.valorAnterior):null,
+      valorNovo:(opts&&opts.valorNovo!=null)?String(opts.valorNovo):null,
+      ts:new Date().toISOString()
+    };
+    validationHistory.unshift(entry);
+    saveValidationHistory();
+    validationHistoryInsert(entry);
+    return entry;
+  }
+  function validationHistoryInsert(entry){
+    if(typeof supa==='undefined'||!supa) return;
+    supa.from('historico_validacao_produtos').upsert({
+      id:entry.id, validacao_id:entry.validacaoId, produto_key:entry.produtoKey,
+      codigo:entry.codigo, descricao:entry.descricao, filial:entry.filial, ncm:entry.ncm,
+      usuario:entry.usuario, sofreu_alteracao:entry.sofreuAlteracao,
+      campo_alterado:entry.campoAlterado, valor_anterior:entry.valorAnterior, valor_novo:entry.valorNovo,
+      criado_em:entry.ts
+    }).then(({error})=>{ if(error) console.warn('Supabase upsert (historico_validacao_produtos) falhou:', error.message); });
+  }
+  function applyRemoteValidationHistory(row){
+    if(validationHistory.some(x=>x.id===row.id)) return;
+    validationHistory.push({id:row.id, validacaoId:row.validacao_id, produtoKey:row.produto_key, codigo:row.codigo, descricao:row.descricao, filial:row.filial, ncm:row.ncm, usuario:row.usuario, sofreuAlteracao:!!row.sofreu_alteracao, campoAlterado:row.campo_alterado, valorAnterior:row.valor_anterior, valorNovo:row.valor_novo, ts:row.criado_em});
+  }
+  function resortValidationHistory(){validationHistory.sort((a,b)=>new Date(b.ts)-new Date(a.ts));saveValidationHistory()}
+  async function loadValidationHistoryFromSupabase(){
+    if(typeof supa==='undefined'||!supa) return;
+    try{
+      const data = typeof fetchAllRows==='function' ? await fetchAllRows('historico_validacao_produtos') : (await supa.from('historico_validacao_produtos').select('*')).data||[];
+      const remoteIds=new Set(data.map(r=>r.id));
+      data.forEach(applyRemoteValidationHistory);
+      validationHistory.forEach(entry=>{ if(!entry.id) entry.id=genId(); if(!remoteIds.has(entry.id)) validationHistoryInsert(entry); });
+      resortValidationHistory();
+      softRender();
+    }catch(e){ console.warn('Falha ao carregar histórico de validação do Supabase:', e); }
+  }
+  function subscribeValidationHistoryRealtime(){
+    if(typeof supa==='undefined'||!supa) return;
+    supa.channel('historico-validacao-changes')
+      .on('postgres_changes', {event:'INSERT', schema:'public', table:'historico_validacao_produtos'}, payload=>{
+        applyRemoteValidationHistory(payload.new);
+        resortValidationHistory();
+        softRender();
+      })
+      .subscribe(status=>{ if(typeof reportRealtimeStatus==='function') reportRealtimeStatus('historico_validacao', status); });
+  }
   function addToActiveReport(idx,decision){const key=reportKey(idx),item=Object.assign({key,idx},reportProductData(idx),{decision:decision||'Validado – Manter Ativo',validatedAt:new Date().toISOString(),user:user()});const pos=activeReport.findIndex(x=>x.key===key);if(pos>=0)activeReport[pos]=item;else activeReport.unshift(item);saveActiveReport()}
   function removeFromActiveReport(idx){for(let i=activeReport.length-1;i>=0;i--)if(activeReport[i].key===reportKey(idx))activeReport.splice(i,1);saveActiveReport()}
   window.syncAnalyticalValidation=function(sheet,idx,shouldValidate){
@@ -203,6 +261,7 @@
         removeFromDeactivationReport(i);
         addToActiveReport(i,'Validado – Manter Ativo pela aba '+(sheet==='NCM_Mesma_Descricao'?'NCM Mesma Descrição':'Descrições Duplicadas'));
         touchTimestamp(MAIN_SHEET+'|'+i);
+        logValidationEvent(i,{sofreuAlteracao:false});
       });
       log('Validação de grupo pela aba analítica',matches[0],matches.length+' cadastro(s) correspondente(s) enviados ao Relatório Mantidos Ativos');
       toast(matches.length+' cadastro(s) validado(s). O item foi movido para o final da lista.');
@@ -227,6 +286,7 @@
     removeFromDeactivationReport(idx);
     addToActiveReport(idx,'Validado – Manter Ativo (principal)');
     touchTimestamp(MAIN_SHEET+'|'+idx);
+    logValidationEvent(idx,{sofreuAlteracao:false});
     persist();
     log('Validação do cadastro principal',idx,'Confirmado para permanecer ativo');
     render();
@@ -239,6 +299,7 @@
     removeFromDeactivationReport(idx);
     addToActiveReport(idx,'Validado – Manter Ativo');
     touchTimestamp(MAIN_SHEET+'|'+idx);
+    logValidationEvent(idx,{sofreuAlteracao:false});
     persist();
     log('Validação – Manter Ativo',idx,'Registro confirmado para permanecer ativo');
     render();
@@ -281,7 +342,23 @@
   window.editReviewRecord=function(idx){if(!requireUser())return;const d=DATA[MAIN_SHEET],r=getRow(MAIN_SHEET,idx),ci=d.headers.findIndex(h=>/^codigo$|^código$/i.test(h)),fi=d.headers.findIndex(h=>/filial/i.test(h));if(!confirm('Deseja alterar o cadastro '+r[ci]+' da Filial '+r[fi]+'?'))return;editContext=idx;editOriginalRow=[...r];openModal(MAIN_SHEET,idx);installEditTracking()};
   window.deleteReviewRecord=function(idx){if(!requireUser())return;const list=indices(),principals=principalsByBranch(list),d=DATA[MAIN_SHEET],r=getRow(MAIN_SHEET,idx),ci=d.headers.findIndex(h=>/^codigo$|^código$/i.test(h)),fi=d.headers.findIndex(h=>/filial/i.test(h));if(principals.has(idx)&&!validated.has(MAIN_SHEET+'|'+idx)){alert('Valide o cadastro principal desta filial antes de excluí-lo.');return}if(!confirm('Confirma a exclusão do cadastro '+r[ci]+' da Filial '+r[fi]+'?'))return;log('Exclusão de registro',idx,'Código '+r[ci]+' excluído');deletes.add(MAIN_SHEET+'|'+idx);touchTimestamp(MAIN_SHEET+'|'+idx);persist();render();toast('Registro excluído e histórico atualizado.')};
 
-  window.saveModal=function(){const idx=editContext;if(idx===null){originalSave();return}const d=DATA[MAIN_SHEET],inputs=[...document.querySelectorAll('#mBody [data-i]')],changedFields=inputs.filter(el=>String(el.value)!==String(editOriginalRow[+el.dataset.i]??'')).map(el=>d.headers[+el.dataset.i]),protheus=!!document.getElementById('editProtheusStatus')?.checked;if(!changedFields.length){alert('Nenhum campo foi alterado.');return}if(!confirm('Salvar alterações nos campos: '+changedFields.join(', ')+'?'))return;originalSave();editTracking.unshift({idx,key:reportKey(idx),fields:changedFields,platform:true,protheus,user:user(),ts:new Date().toISOString(),description});safeLocalSet('emtel_edit_tracking',JSON.stringify(editTracking.slice(0,1000)));queueMovementSnapshot();log('Alteração de cadastro',idx,'Campos: '+changedFields.join(', ')+' • Plataforma: atualizado • Protheus: '+(protheus?'atualizado':'pendente'));editContext=null;editOriginalRow=null;render();toast(protheus?'Alteração registrada na plataforma e no Protheus.':'Alteração salva; atualização no Protheus ficou pendente.')};
+  window.saveModal=function(){
+    const idx=editContext;if(idx===null){originalSave();return}
+    const d=DATA[MAIN_SHEET],inputs=[...document.querySelectorAll('#mBody [data-i]')];
+    const changes=inputs.filter(el=>String(el.value)!==String(editOriginalRow[+el.dataset.i]??'')).map(el=>({header:d.headers[+el.dataset.i],oldVal:editOriginalRow[+el.dataset.i],newVal:el.value}));
+    const changedFields=changes.map(c=>c.header),protheus=!!document.getElementById('editProtheusStatus')?.checked;
+    if(!changedFields.length){alert('Nenhum campo foi alterado.');return}
+    if(!confirm('Salvar alterações nos campos: '+changedFields.join(', ')+'?'))return;
+    originalSave();
+    editTracking.unshift({idx,key:reportKey(idx),fields:changedFields,platform:true,protheus,user:user(),ts:new Date().toISOString(),description});
+    safeLocalSet('emtel_edit_tracking',JSON.stringify(editTracking.slice(0,1000)));
+    queueMovementSnapshot();
+    const validacaoId=genId();
+    changes.forEach(c=>logValidationEvent(idx,{sofreuAlteracao:true,campoAlterado:c.header,valorAnterior:c.oldVal,valorNovo:c.newVal,validacaoId}));
+    log('Alteração de cadastro',idx,'Campos: '+changedFields.join(', ')+' • Plataforma: atualizado • Protheus: '+(protheus?'atualizado':'pendente'));
+    editContext=null;editOriginalRow=null;render();
+    toast(protheus?'Alteração registrada na plataforma e no Protheus.':'Alteração salva; atualização no Protheus ficou pendente.');
+  };
   window.closeModal=function(){editContext=null;editOriginalRow=null;return originalClose()};
 
   function historyHtml(){const logs=history.filter(x=>x.description===description).slice(0,20);return '<section class="panel"><h2>Histórico desta análise</h2>'+(logs.length?logs.map(x=>'<div class="history-row"><b>'+escapeHtml(x.user)+'</b><span>'+escapeHtml(x.action)+'<br>'+escapeHtml(x.detail||'')+'</span><span>Filial '+escapeHtml(x.filial)+'</span><span>'+new Date(x.ts).toLocaleString('pt-BR')+'</span></div>').join(''):'<div class="empty">Nenhuma ação registrada.</div>')+'</section>'}
@@ -327,7 +404,7 @@
     m.innerHTML='<div class="page-title"><div><div class="page-kicker">Base cadastral Protheus</div><h2>Produtos Cadastrados Protheus</h2><p>Analise, valide, altere e separe produtos para desativação.</p></div><div class="date-badge" id="catalogResultCount">'+st.total.toLocaleString('pt-BR')+' produto(s)</div></div><div class="cards"><div class="card clk" onclick="catalogSetStatus(\'all\')"><h3>Total</h3><div class="v">'+st.total.toLocaleString('pt-BR')+'</div><div class="d">Produtos ativos</div></div><div class="card clk" onclick="catalogSetStatus(\'dup\')"><h3>Duplicados</h3><div class="v">'+st.dup.toLocaleString('pt-BR')+'</div></div><div class="card clk" onclick="catalogSetStatus(\'val\')"><h3>Validados</h3><div class="v">'+st.val.toLocaleString('pt-BR')+'</div><div class="d">Mantidos ativos</div></div><div class="card clk" onclick="catalogSetStatus(\'pend\')"><h3>Pendentes</h3><div class="v">'+st.pend.toLocaleString('pt-BR')+'</div><div class="d">Aguardando análise</div></div></div><section class="panel"><div class="toolbar"><input id="catalogSearch" type="text" placeholder="🔍 Busca geral..." oninput="catalogFilter()"><input id="catalogBranch" type="text" placeholder="🏢 Filial" value="'+escapeHtml(init.filial||'')+'" oninput="catalogFilter()"><input id="catalogNcm" type="text" placeholder="🏷️ NCM" value="'+escapeHtml(init.ncm||'')+'" oninput="catalogFilter()"><input id="catalogDesc" type="text" placeholder="📝 Descrição" value="'+escapeHtml(init.desc||'')+'" oninput="catalogFilter()"><button class="btn gray" onclick="catalogClear()">Limpar</button><button class="btn" onclick="triggerImport(MAIN_SHEET)">⬆ Importar Produtos</button><input type="file" id="importFile" accept=".xlsx,.xls" style="display:none" onchange="handleImportFile(event,MAIN_SHEET)"><button class="btn" onclick="exportAll()">⬇ Exportar Excel</button></div><div class="catalog-status-filters"><button data-catalog-status="all" class="'+(catalogFilters.status==='all'?'active':'')+'" onclick="catalogSetStatus(\'all\')">Todos</button><button data-catalog-status="dup" class="'+(catalogFilters.status==='dup'?'active':'')+'" onclick="catalogSetStatus(\'dup\')">Duplicados</button><button data-catalog-status="val" class="'+(catalogFilters.status==='val'?'active':'')+'" onclick="catalogSetStatus(\'val\')">Validados</button><button data-catalog-status="pend" class="'+(catalogFilters.status==='pend'?'active':'')+'" onclick="catalogSetStatus(\'pend\')">Pendentes</button><button data-catalog-status="separated" class="'+(catalogFilters.status==='separated'?'active':'')+'" onclick="catalogSetStatus(\'separated\')">Separados</button></div><div class="review-wrap"><table class="review-table"><thead><tr><th>Situação</th><th>Filial</th><th>Código</th><th>Código do item</th><th>Descrição</th><th>NCM</th><th>Tipo</th><th>Unidade</th><th>Grupo</th><th>Data de criação</th><th>Comparação NCM</th><th>Ações</th></tr></thead><tbody id="catalogBody"></tbody></table></div></section>';drawModernProducts();
   };
 
-  function ensureReportNav(){const n=document.getElementById('nav');if(!n)return;if(!n.querySelector('[data-id="activeReport"]')){const a=document.createElement('button');a.dataset.id='activeReport';a.innerHTML='✅ Relatório Mantidos Ativos';a.onclick=function(){productReviewMode=false;goTo('activeReport')};n.appendChild(a)}if(!n.querySelector('[data-id="deactivationReport"]')){const b=document.createElement('button');b.dataset.id='deactivationReport';b.innerHTML='📋 Relatório de Desativação';b.onclick=function(){productReviewMode=false;goTo('deactivationReport')};n.appendChild(b)}const config=n.querySelector('[data-id="config"]');if(config)n.appendChild(config)}
+  function ensureReportNav(){const n=document.getElementById('nav');if(!n)return;if(!n.querySelector('[data-id="activeReport"]')){const a=document.createElement('button');a.dataset.id='activeReport';a.innerHTML='✅ Relatório Mantidos Ativos';a.onclick=function(){productReviewMode=false;goTo('activeReport')};n.appendChild(a)}if(!n.querySelector('[data-id="deactivationReport"]')){const b=document.createElement('button');b.dataset.id='deactivationReport';b.innerHTML='📋 Relatório de Desativação';b.onclick=function(){productReviewMode=false;goTo('deactivationReport')};n.appendChild(b)}if(!n.querySelector('[data-id="validatedReport"]')){const c=document.createElement('button');c.dataset.id='validatedReport';c.innerHTML='🧾 Produtos Validados';c.onclick=function(){productReviewMode=false;goTo('validatedReport')};n.appendChild(c)}const config=n.querySelector('[data-id="config"]');if(config)n.appendChild(config)}
   window.undoActiveReportTask=function(idx){
     const item=activeReport.find(x=>x.key===reportKey(idx));
     if(!item||!requireUser())return;
@@ -372,6 +449,123 @@
     m.innerHTML='<div class="page-title"><div><div class="page-kicker">Governança cadastral</div><h2>Relatório de Cadastros Mantidos Ativos</h2><p>Produtos analisados e validados para permanecerem ativos.</p></div></div><div class="review-stats"><div class="review-stat"><b>'+activeReport.length+'</b><span>Cadastros validados</span></div><div class="review-stat"><b>'+new Set(activeReport.map(x=>x.description)).size+'</b><span>Produtos</span></div><div class="review-stat"><b>'+new Set(activeReport.map(x=>x.branch)).size+'</b><span>Filiais</span></div><div class="review-stat"><b>'+new Set(activeReport.map(x=>x.user)).size+'</b><span>Responsáveis</span></div></div><section class="panel"><div class="report-toolbar"><div><h2 style="margin-bottom:4px">Cadastros mantidos ativos</h2><p>As decisões permanecem armazenadas neste navegador.</p></div><button class="btn" onclick="exportActiveReport()" '+(activeReport.length?'':'disabled')+'>⬇ Exportar CSV</button></div><div class="review-wrap"><table class="review-table"><thead><tr><th>Situação</th><th>Código</th><th>Código do item</th><th>Descrição</th><th>Filial</th><th>NCM</th><th>Tipo</th><th>Unidade</th><th>Grupo</th><th>Data de criação</th><th>Decisão</th><th>Data da validação</th><th>Usuário</th><th>Ações</th></tr></thead><tbody>'+(rows||'<tr><td colspan="14" class="empty">Nenhum cadastro foi validado para permanecer ativo.</td></tr>')+'</tbody></table></div></section>';
   };
 
+  // ===== Relatório de Produtos Validados =====
+  let validatedReportFilter={status:'all',q:''};
+  function computeValidatedReportRows(){
+    const byProduct=new Map();
+    validationHistory.forEach(e=>{
+      if(!byProduct.has(e.produtoKey)) byProduct.set(e.produtoKey,{produtoKey:e.produtoKey,codigo:e.codigo,descricao:e.descricao,filial:e.filial,ncm:e.ncm,eventos:[]});
+      byProduct.get(e.produtoKey).eventos.push(e);
+    });
+    // garante uma linha para todo produto validado hoje, mesmo sem histórico registrado (validado antes deste recurso existir)
+    for(let i=0;i<rowCount(MAIN_SHEET);i++){
+      const key=reportKey(i);
+      if(validated.has(key) && !byProduct.has(key)){
+        const data=reportProductData(i);
+        byProduct.set(key,{produtoKey:key,codigo:data.code,descricao:data.description,filial:data.branch,ncm:data.ncm,eventos:[]});
+      }
+    }
+    return [...byProduct.values()].map(p=>{
+      const eventosOrdenados=[...p.eventos].sort((a,b)=>new Date(a.ts)-new Date(b.ts));
+      const alteracoes=eventosOrdenados.filter(e=>e.sofreuAlteracao);
+      const idx=Number(p.produtoKey.split('|')[1]);
+      const ativoHoje=isActive(MAIN_SHEET,idx)&&validated.has(p.produtoKey);
+      const usuarios=[...new Set(eventosOrdenados.map(e=>e.usuario).filter(Boolean))];
+      const ultimo=eventosOrdenados[eventosOrdenados.length-1];
+      return {
+        ...p, idx, eventosOrdenados,
+        qtdAlteracoes:alteracoes.length,
+        sofreuAlteracao:alteracoes.length>0,
+        status: !ativoHoje?'Pendente':(alteracoes.length>0?'Validado — Com alteração':'Validado — Sem alteração'),
+        usuarios,
+        primeiraValidacao: eventosOrdenados[0]?eventosOrdenados[0].ts:null,
+        ultimaAtividade: ultimo?ultimo.ts:null
+      };
+    });
+  }
+  function validatedReportStats(rows){
+    const total=rows.filter(r=>r.status!=='Pendente').length;
+    const alterados=rows.filter(r=>r.status==='Validado — Com alteração').length;
+    const semAlteracao=rows.filter(r=>r.status==='Validado — Sem alteração').length;
+    const totalAlteracoes=validationHistory.filter(e=>e.sofreuAlteracao).length;
+    const pendentes=rows.filter(r=>r.status==='Pendente').length;
+    return {total,alterados,semAlteracao,totalAlteracoes,pendentes,pctAlterado:total?Math.round(alterados*100/total):0,pctSemAlteracao:total?Math.round(semAlteracao*100/total):0};
+  }
+  window.setValidatedReportStatus=function(status){validatedReportFilter.status=status;renderValidatedReport(document.getElementById('main'))};
+  window.filterValidatedReport=function(){validatedReportFilter.q=(document.getElementById('validatedReportSearch')?.value||'').toLowerCase();renderValidatedReport(document.getElementById('main'))};
+  window.exportValidatedReport=function(){
+    const rows=applyValidatedReportFilter(computeValidatedReportRows());
+    const columns=['Código','Descrição','Filial','NCM','Status','Sofreu alteração','Qtd. alterações','Usuário(s)','Primeira validação','Última atividade'];
+    const quote=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+    const lines=[columns.map(quote).join(';')];
+    rows.forEach(r=>lines.push([r.codigo,r.descricao,r.filial,r.ncm,r.status,r.sofreuAlteracao?'SIM':'NÃO',r.qtdAlteracoes,r.usuarios.join(', '),r.primeiraValidacao?new Date(r.primeiraValidacao).toLocaleString('pt-BR'):'—',r.ultimaAtividade?new Date(r.ultimaAtividade).toLocaleString('pt-BR'):'—'].map(quote).join(';')));
+    const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=url;a.download='relatorio_produtos_validados.csv';a.click();URL.revokeObjectURL(url);
+  };
+  function applyValidatedReportFilter(rows){
+    const f=validatedReportFilter;
+    return rows.filter(r=>{
+      if(f.status==='alterados'&&r.status!=='Validado — Com alteração')return false;
+      if(f.status==='sem-alteracao'&&r.status!=='Validado — Sem alteração')return false;
+      if(f.status==='pendentes'&&r.status!=='Pendente')return false;
+      if(f.status==='validados'&&r.status==='Pendente')return false;
+      if(f.q&&!(r.codigo+' '+r.descricao).toLowerCase().includes(f.q))return false;
+      return true;
+    });
+  }
+  window.renderValidatedReport=function(m){
+    const allRows=computeValidatedReportRows(),stats=validatedReportStats(allRows),rows=applyValidatedReportFilter(allRows).sort((a,b)=>new Date(b.ultimaAtividade||0)-new Date(a.ultimaAtividade||0));
+    const statusPill=s=>{
+      const map={'Validado — Sem alteração':['🟢','#047857','#d1fae5'],'Validado — Com alteração':['🟠','#92610a','#fff3d6'],'Pendente':['🔴','#b91c1c','#fee']};
+      const [icon,color,bg]=map[s]||map['Pendente'];
+      return '<span class="pill" style="color:'+color+';background:'+bg+'">'+icon+' '+escapeHtml(s)+'</span>';
+    };
+    const rowsHtml=rows.map(r=>'<tr class="clk-row" onclick="openValidationHistoryModal(\''+r.produtoKey.replace(/'/g,"\\'")+'\')"><td><b>'+escapeHtml(r.codigo)+'</b></td><td>'+escapeHtml(r.descricao)+'</td><td>'+escapeHtml(r.filial)+'</td><td>'+escapeHtml(r.ncm)+'</td><td>'+statusPill(r.status)+'</td><td>'+r.qtdAlteracoes+'</td><td>'+escapeHtml(r.usuarios.join(', ')||'—')+'</td><td>'+(r.primeiraValidacao?new Date(r.primeiraValidacao).toLocaleString('pt-BR'):'—')+'</td><td>'+(r.ultimaAtividade?new Date(r.ultimaAtividade).toLocaleString('pt-BR'):'—')+'</td><td><button class="btn small" onclick="event.stopPropagation();openValidationHistoryModal(\''+r.produtoKey.replace(/'/g,"\\'")+'\')">Ver histórico</button></td></tr>').join('');
+    m.innerHTML='<div class="page-title"><div><div class="page-kicker">Governança cadastral</div><h2>Relatório de Produtos Validados</h2><p>Histórico completo de validações e alterações realizadas durante a análise.</p></div></div>'
+      +'<div class="cards">'
+      +'<div class="card clk" onclick="setValidatedReportStatus(\'validados\')"><h3>Total validados</h3><div class="v">'+stats.total.toLocaleString('pt-BR')+'</div></div>'
+      +'<div class="card clk" onclick="setValidatedReportStatus(\'sem-alteracao\')"><h3>Sem alteração</h3><div class="v">'+stats.semAlteracao.toLocaleString('pt-BR')+'</div><div class="d">'+stats.pctSemAlteracao+'% dos validados</div></div>'
+      +'<div class="card clk" onclick="setValidatedReportStatus(\'alterados\')"><h3>Com alteração</h3><div class="v">'+stats.alterados.toLocaleString('pt-BR')+'</div><div class="d">'+stats.pctAlterado+'% dos validados</div></div>'
+      +'<div class="card"><h3>Total de alterações</h3><div class="v">'+stats.totalAlteracoes.toLocaleString('pt-BR')+'</div><div class="d">campos alterados (pode ser &gt; nº de produtos)</div></div>'
+      +'<div class="card clk" onclick="setValidatedReportStatus(\'pendentes\')"><h3>Pendentes</h3><div class="v">'+stats.pendentes.toLocaleString('pt-BR')+'</div></div>'
+      +'</div>'
+      +'<section class="panel">'
+      +'<div class="report-toolbar"><div><h2 style="margin-bottom:4px">Produtos</h2><p>Clique em um produto para ver o histórico completo.</p></div><button class="btn" onclick="exportValidatedReport()">⬇ Exportar CSV</button></div>'
+      +'<div class="toolbar"><input id="validatedReportSearch" type="text" placeholder="🔍 Buscar por código ou descrição..." value="'+escapeHtml(validatedReportFilter.q)+'" oninput="filterValidatedReport()"></div>'
+      +'<div class="catalog-status-filters">'
+      +'<button class="'+(validatedReportFilter.status==='all'?'active':'')+'" onclick="setValidatedReportStatus(\'all\')">Todos</button>'
+      +'<button class="'+(validatedReportFilter.status==='validados'?'active':'')+'" onclick="setValidatedReportStatus(\'validados\')">Validados</button>'
+      +'<button class="'+(validatedReportFilter.status==='alterados'?'active':'')+'" onclick="setValidatedReportStatus(\'alterados\')">Alterados</button>'
+      +'<button class="'+(validatedReportFilter.status==='sem-alteracao'?'active':'')+'" onclick="setValidatedReportStatus(\'sem-alteracao\')">Sem alteração</button>'
+      +'<button class="'+(validatedReportFilter.status==='pendentes'?'active':'')+'" onclick="setValidatedReportStatus(\'pendentes\')">Pendentes</button>'
+      +'</div>'
+      +'<div class="review-wrap"><table class="review-table"><thead><tr><th>Código</th><th>Descrição</th><th>Filial</th><th>NCM</th><th>Status</th><th>Alterações</th><th>Usuário(s)</th><th>1ª validação</th><th>Última atividade</th><th>Ações</th></tr></thead><tbody>'+(rowsHtml||'<tr><td colspan="10" class="empty">Nenhum produto encontrado.</td></tr>')+'</tbody></table></div>'
+      +'</section>';
+  };
+  window.openValidationHistoryModal=function(produtoKey){
+    const rows=computeValidatedReportRows(),p=rows.find(r=>r.produtoKey===produtoKey);
+    let overlay=document.getElementById('validationHistoryOverlay');
+    if(!overlay){
+      overlay=document.createElement('div');
+      overlay.id='validationHistoryOverlay';
+      overlay.style.cssText='position:fixed;inset:0;z-index:9998;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px';
+      overlay.onclick=function(e){if(e.target===overlay)closeValidationHistoryModal()};
+      document.body.appendChild(overlay);
+    }
+    if(!p){overlay.innerHTML='';overlay.style.display='none';return}
+    const eventos=[...p.eventosOrdenados].reverse();
+    const eventoHtml=e=>'<div class="history-row"><b>'+escapeHtml(e.usuario||'Anônimo')+'</b><span>'
+      +(e.sofreuAlteracao?('Alteração de campo: <b>'+escapeHtml(e.campoAlterado||'—')+'</b><br>'+escapeHtml(e.valorAnterior||'—')+' → '+escapeHtml(e.valorNovo||'—')):'Validado sem alteração')
+      +'</span><span>'+new Date(e.ts).toLocaleString('pt-BR')+'</span></div>';
+    overlay.style.display='flex';
+    overlay.innerHTML='<div class="box" style="max-width:640px;max-height:80vh;overflow:auto;background:#fff;border-radius:14px;padding:20px" onclick="event.stopPropagation()">'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px"><div><h3 style="margin:0">Histórico de Validação do Produto</h3><p style="color:var(--muted);font-size:13px;margin:4px 0 0">'+escapeHtml(p.codigo)+' — '+escapeHtml(p.descricao)+'</p></div><button class="ia-close" onclick="closeValidationHistoryModal()">✕</button></div>'
+      +'<p style="font-size:12px;color:var(--muted);margin-bottom:14px">Filial: '+escapeHtml(p.filial)+' · NCM: '+escapeHtml(p.ncm)+' · Status atual: '+escapeHtml(p.status)+'</p>'
+      +(eventos.length?eventos.map(eventoHtml).join(''):'<div class="empty">Nenhum evento registrado para este produto.</div>')
+      +'</div>';
+  };
+  window.closeValidationHistoryModal=function(){const overlay=document.getElementById('validationHistoryOverlay');if(overlay){overlay.style.display='none';overlay.innerHTML=''}};
+
   window.dashboardGo=function(target,filter){productReviewMode=false;goTo(target,filter||null)};
   window.renderExecutiveDashboard=function(m){
     const st=computeStats(MAIN_SHEET),total=st.total||1,valPct=Math.round(st.val*100/total),dupPct=Math.round(st.dup*100/total),pendPct=Math.max(0,100-valPct),d=DATA[MAIN_SHEET],fi=d.headers.findIndex(h=>/filial|loja|unidade/i.test(h)),dupSet=buildDupSet(MAIN_SHEET),branchCounts=new Map();
@@ -381,7 +575,7 @@
     m.innerHTML='<div class="exec-dashboard-head"><div><div class="page-kicker">Visão executiva</div><h1>Dashboard de qualidade cadastral</h1><p>Acompanhe a evolução, identifique riscos e acesse diretamente os registros.</p></div><div class="exec-updated">Atualizado em '+new Date().toLocaleString('pt-BR')+'</div></div><div class="exec-kpis">'+kpi('Produtos ativos',st.total,'Base consolidada','#174ea6','▦',"dashboardGo(MAIN_SHEET)")+kpi('Cadastros repetidos',st.dup,dupPct+'% da base','#e3122b','⧉',"dashboardGo(MAIN_SHEET,{onlyDup:true})")+kpi('Validados',st.val,valPct+'% concluído','#0f9f72','✓',"dashboardGo(MAIN_SHEET,{onlyValidated:true})")+kpi('Pendentes',st.pend,pendPct+'% aguardando análise','#e99912','◷',"dashboardGo(MAIN_SHEET,{onlyPending:true})")+'</div><div class="exec-layout"><section class="exec-panel"><div class="exec-panel-title"><h2>Distribuição da situação cadastral</h2><button onclick="dashboardGo(MAIN_SHEET)">Ver produtos →</button></div><div class="exec-donut-wrap"><div class="exec-donut" style="--validated:'+valPct+'%;--duplicate:'+dupPct+'%"><div class="exec-donut-center"><b>'+st.total.toLocaleString('pt-BR')+'</b><span>produtos</span></div></div><div class="exec-legend"><div class="exec-legend-item" onclick="dashboardGo(MAIN_SHEET,{onlyValidated:true})"><i style="background:#0f9f72"></i>Validados<b>'+st.val.toLocaleString('pt-BR')+'</b></div><div class="exec-legend-item" onclick="dashboardGo(MAIN_SHEET,{onlyDup:true})"><i style="background:#e3122b"></i>Repetidos<b>'+st.dup.toLocaleString('pt-BR')+'</b></div><div class="exec-legend-item" onclick="dashboardGo(MAIN_SHEET,{onlyPending:true})"><i style="background:#e99912"></i>Pendentes<b>'+st.pend.toLocaleString('pt-BR')+'</b></div></div></div></section><section class="exec-panel"><div class="exec-panel-title"><h2>Filiais com mais duplicidades</h2><button onclick="dashboardGo(\'Descricoes_Duplicadas\')">Analisar →</button></div><div class="branch-bars">'+(topBranches.length?topBranches.map(([branch,count])=>'<div class="branch-bar" onclick="dashboardGo(MAIN_SHEET,{filial:\''+escapeHtml(branch)+'\',onlyDup:true})"><div class="branch-bar-head"><b>Filial '+escapeHtml(branch)+'</b><span>'+count.toLocaleString('pt-BR')+' registros</span></div><div class="branch-track"><div class="branch-fill" style="width:'+Math.round(count*100/maxBranch)+'%"></div></div></div>').join(''):'<div class="empty">Nenhuma duplicidade encontrada.</div>')+'</div></section></div><section class="exec-panel"><div class="exec-panel-title"><h2>Acessos rápidos</h2></div><div class="exec-shortcuts"><button class="exec-shortcut" onclick="dashboardGo(\'NCM_Mesma_Descricao\')"><b>NCM Mesma Descrição</b><span>Analise coincidências de classificação fiscal.</span><em>Abrir análise →</em></button><button class="exec-shortcut" onclick="dashboardGo(\'Descricoes_Duplicadas\')"><b>Descrições Duplicadas</b><span>Compare produtos com descrições repetidas.</span><em>Abrir análise →</em></button><button class="exec-shortcut" onclick="dashboardGo(\'activeReport\')"><b>Mantidos Ativos</b><span>'+activeReport.length+' decisões registradas.</span><em>Abrir relatório →</em></button><button class="exec-shortcut" onclick="dashboardGo(\'deactivationReport\')"><b>Para Desativação</b><span>'+deactivationReport.length+' registros no relatório.</span><em>Abrir relatório →</em></button></div></section>';
   };
 
-  window.render=function(){ensureReportNav();if(productReviewMode&&current!==MAIN_SHEET)productReviewMode=false;if(productReviewMode&&current===MAIN_SHEET){activeBtn();return renderDuplicateReview(document.getElementById('main'))}if(current===MAIN_SHEET){activeBtn();return renderModernProducts(document.getElementById('main'))}if(current==='dashboard'){activeBtn();return renderExecutiveDashboard(document.getElementById('main'))}if(current==='activeReport'){activeBtn();return renderActiveReport(document.getElementById('main'))}if(current==='deactivationReport'){activeBtn();return renderDeactivationReport(document.getElementById('main'))}originalRender();ensureReportNav();if(current==='Descricoes_Duplicadas'||current==='NCM_Mesma_Descricao'){const sourceSheet=current,tb=document.getElementById('tbody'),source=DATA[sourceSheet],descriptionIndex=source?source.headers.findIndex(h=>/descric|descr|produto|nome/i.test(h)):-1;if(tb&&descriptionIndex>=0&&!tb.dataset.reviewBound){tb.dataset.reviewBound='1';tb.addEventListener('click',function(e){if(e.target.closest('button,input,label,a,select,option'))return;const tr=e.target.closest('tr');if(!tr||!tb.contains(tr))return;const descCell=tr.children[descriptionIndex+1];if(!descCell)return;e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();openDuplicateReview(descCell.textContent.trim())},true)}}};
+  window.render=function(){ensureReportNav();if(productReviewMode&&current!==MAIN_SHEET)productReviewMode=false;if(productReviewMode&&current===MAIN_SHEET){activeBtn();return renderDuplicateReview(document.getElementById('main'))}if(current===MAIN_SHEET){activeBtn();return renderModernProducts(document.getElementById('main'))}if(current==='dashboard'){activeBtn();return renderExecutiveDashboard(document.getElementById('main'))}if(current==='activeReport'){activeBtn();return renderActiveReport(document.getElementById('main'))}if(current==='deactivationReport'){activeBtn();return renderDeactivationReport(document.getElementById('main'))}if(current==='validatedReport'){activeBtn();return renderValidatedReport(document.getElementById('main'))}originalRender();ensureReportNav();if(current==='Descricoes_Duplicadas'||current==='NCM_Mesma_Descricao'){const sourceSheet=current,tb=document.getElementById('tbody'),source=DATA[sourceSheet],descriptionIndex=source?source.headers.findIndex(h=>/descric|descr|produto|nome/i.test(h)):-1;if(tb&&descriptionIndex>=0&&!tb.dataset.reviewBound){tb.dataset.reviewBound='1';tb.addEventListener('click',function(e){if(e.target.closest('button,input,label,a,select,option'))return;const tr=e.target.closest('tr');if(!tr||!tb.contains(tr))return;const descCell=tr.children[descriptionIndex+1];if(!descCell)return;e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();openDuplicateReview(descCell.textContent.trim())},true)}}};
   render();
   restoreMovementSnapshot();
   loadDesativacaoFromSupabase();
@@ -390,4 +584,7 @@
   loadHistoricoFromSupabase();
   subscribeHistoricoRealtime();
   setInterval(loadHistoricoFromSupabase, 8000);
+  loadValidationHistoryFromSupabase();
+  subscribeValidationHistoryRealtime();
+  setInterval(loadValidationHistoryFromSupabase, 8000);
 })();
