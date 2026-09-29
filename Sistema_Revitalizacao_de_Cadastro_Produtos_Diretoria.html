@@ -771,13 +771,13 @@ function renderPreserveState(){
 
 // ===== RESUMO (cards clicáveis) =====
 function renderResumo(m){
-  const st=computeStats(MAIN_SHEET), pct=st.total?Math.round(st.val*100/st.total):0, dupPct=st.total?Math.round(st.dup*100/st.total):0;
+  const st=computeStats(MAIN_SHEET), pct=st.total?Math.round(st.val*100/st.total):0;
   const now=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
   m.innerHTML=`
     <div class="page-title"><div><div class="page-kicker">Visão executiva</div><h2>Panorama da base cadastral</h2><p>Indicadores consolidados para acompanhamento da revitalização.</p></div><div class="date-badge">Atualizado em ${now}</div></div>
     <div class="cards">
       <div class="card clk" onclick="goTo('${MAIN_SHEET}')"><div class="card-top"><h3>Total de produtos</h3><span class="metric-icon">▦</span></div><div class="v">${st.total.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> Base ativa consolidada</div></div>
-      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyDup:true})"><div class="card-top"><h3>Produtos repetidos</h3><span class="metric-icon">⧉</span></div><div class="v">${st.dup.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--vermelho)"></i> ${dupPct}% da base requer atenção</div></div>
+      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyDup:true})"><div class="card-top"><h3>Produtos repetidos</h3><span class="metric-icon">⧉</span></div><div class="v">${st.dup.toLocaleString('pt-BR')}</div></div>
       <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyValidated:true})"><div class="card-top"><h3>Itens validados</h3><span class="metric-icon">✓</span></div><div class="v">${st.val.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--verde)"></i> ${pct}% do escopo concluído</div></div>
       <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})"><div class="card-top"><h3>Pendentes de validação</h3><span class="metric-icon">◷</span></div><div class="v">${st.pend.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--ambar)"></i> Próxima frente de atuação</div></div>
     </div>
@@ -1956,6 +1956,6 @@ setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exe
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
 </script>
 
-<script src="duplicidades-review.js?v=20260923-fix-paginacao"></script>
+<script src="duplicidades-review.js?v=20260929-remove-legendas-cards"></script>
 <script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
 </body></html>
