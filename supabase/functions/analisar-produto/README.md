@@ -203,3 +203,30 @@ alter publication supabase_realtime add table public.historico_validacao_produto
 ```
 
 A partir dessa migração, a aba "Produtos Validados" mostra em tempo real, para todos os usuários: quantos produtos foram validados sem alteração, quantos tiveram algum campo alterado, o total de alterações e o histórico completo (campo, valor anterior, valor novo, usuário e data) de cada produto.
+
+## 11. Compartilhar a rastreabilidade de edições ("Protheus pendente/atualizado") entre usuários
+
+Até aqui, sempre que alguém editava um cadastro e marcava (ou não) "Atualizado no Protheus", essa informação ficava salva só no navegador de quem editou — por isso os selos "Plataforma atualizada" / "Protheus pendente" apareciam para uns usuários e não para outros na tela de comparação de produtos. Rode no **SQL Editor**:
+
+```sql
+create table public.edicoes_pendentes (
+  id text primary key,
+  row_idx integer not null,
+  produto_key text not null,
+  campos jsonb not null default '[]'::jsonb,
+  plataforma boolean not null default true,
+  protheus boolean not null default false,
+  usuario text,
+  descricao text,
+  criado_em timestamptz not null default now()
+);
+
+alter table public.edicoes_pendentes enable row level security;
+
+create policy "leitura publica" on public.edicoes_pendentes for select using (true);
+create policy "insercao publica" on public.edicoes_pendentes for insert with check (true);
+
+alter publication supabase_realtime add table public.edicoes_pendentes;
+```
+
+A partir dessa migração, os selos de status de cada edição (plataforma/Protheus) e o histórico de alterações usado no Relatório de Produtos Validados aparecem iguais para todos os usuários, em tempo real.
