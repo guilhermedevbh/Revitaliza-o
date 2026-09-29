@@ -657,74 +657,6 @@ function rebuildDuplicateAnalysis(){
 function getRow(sheet, i){ return edits[sheet+'|'+i] || rawRow(sheet, i); }
 function isActive(sheet, i){ return !deletes.has(sheet+'|'+i); }
 
-// ===== Cruzamento NCM Mesma Descrição <-> Descrições Duplicadas =====
-// As duas abas agrupam os mesmos produtos da aba principal de formas diferentes
-// (uma por NCM+Descrição, outra só por Descrição). Sem isso, validar um grupo em
-// "Descrições Duplicadas" não refletia como validado no grupo correspondente de
-// "NCM Mesma Descrição" (e vice-versa), porque cada aba guardava sua própria flag
-// independente. Agora o status "validado" dessas duas abas é sempre derivado dos
-// produtos da aba principal que o grupo representa — fonte única de verdade.
-// Índice da aba principal por Descrição (e Descrição+NCM), construído UMA vez por
-// chamada e reaproveitado por todas as linhas — sem isso, cada linha das abas de
-// duplicidade varria os ~9 mil produtos da aba principal sozinha (O(n²): travava a
-// troca de aba). buildMainDescIndex() é O(n); cada consulta depois é O(1).
-function buildMainDescIndex(){
-  const main = DATA[MAIN_SHEET];
-  const byDesc = new Map(), byDescNcm = new Map();
-  if(!main) return {byDesc, byDescNcm};
-  const mainDescIdx = main.headers.findIndex(h=>/descric|descr|produto|nome/i.test(h));
-  const mainNcmIdx  = main.headers.findIndex(h=>/NCM|IPI/i.test(h));
-  if(mainDescIdx<0) return {byDesc, byDescNcm};
-  const normalize = v=>String(v??'').trim().replace(/\s+/g,' ').toUpperCase();
-  const n = rowCount(MAIN_SHEET);
-  for(let i=0;i<n;i++){
-    if(!isActive(MAIN_SHEET,i)) continue;
-    const row = getRow(MAIN_SHEET,i);
-    const desc = normalize(row[mainDescIdx]);
-    if(!desc) continue;
-    if(!byDesc.has(desc)) byDesc.set(desc, []);
-    byDesc.get(desc).push(i);
-    if(mainNcmIdx>=0){
-      const k = desc+'||'+normalize(row[mainNcmIdx]);
-      if(!byDescNcm.has(k)) byDescNcm.set(k, []);
-      byDescNcm.get(k).push(i);
-    }
-  }
-  return {byDesc, byDescNcm};
-}
-function mainMatchesForSummaryRow(sheet, idx, idxCache){
-  const source = DATA[sheet];
-  if(!source) return [];
-  const sourceRow = getRow(sheet, idx);
-  const sourceDescIdx = source.headers.findIndex(h=>/descric|descr|produto|nome/i.test(h));
-  const sourceNcmIdx  = source.headers.findIndex(h=>/NCM|IPI/i.test(h));
-  if(sourceDescIdx<0) return [];
-  const normalize = v=>String(v??'').trim().replace(/\s+/g,' ').toUpperCase();
-  const targetDescription = normalize(sourceRow[sourceDescIdx]);
-  if(!targetDescription) return [];
-  const cache = idxCache || buildMainDescIndex();
-  if(sheet==='NCM_Mesma_Descricao'){
-    const targetNcm = sourceNcmIdx>=0 ? normalize(sourceRow[sourceNcmIdx]) : '';
-    return cache.byDescNcm.get(targetDescription+'||'+targetNcm) || [];
-  }
-  return cache.byDesc.get(targetDescription) || [];
-}
-function summaryRowValidationInfo(sheet, idx, idxCache){
-  const matches = mainMatchesForSummaryRow(sheet, idx, idxCache);
-  if(!matches.length || !matches.every(i=>validated.has(MAIN_SHEET+'|'+i))) return {isVal:false, quem:'', quando:''};
-  let quem='', quando='';
-  matches.forEach(i=>{
-    const k = MAIN_SHEET+'|'+i;
-    if(lastEditors[k] && (!quando || (timestamps[k]||'') > quando)){ quem = lastEditors[k]; quando = timestamps[k]||quando; }
-  });
-  return {isVal:true, quem, quando};
-}
-function isSummaryRowValidated(sheet, i, idxCache){
-  const key = sheet+'|'+i;
-  if(sheet!=='NCM_Mesma_Descricao' && sheet!=='Descricoes_Duplicadas') return validated.has(key);
-  return validated.has(key) || summaryRowValidationInfo(sheet, i, idxCache).isVal;
-}
-
 function computeStats(sheet){
   const d = DATA[sheet]; if(!d) return {total:0,dup:0,val:0,pend:0,filiaisDup:[]};
   const headers = d.headers;
@@ -733,13 +665,12 @@ function computeStats(sheet){
   const filialIdx = headers.findIndex(h=>/filial|loja|unidade/i.test(h));
   const groups = new Map();          // chave duplicidade -> [i,i,...]
   const filiaisPorChave = new Map(); // chave -> Set(filial)
-  const idxCache = (sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas') ? buildMainDescIndex() : null;
   let total = 0, val = 0;
   const n = rowCount(sheet);
   for(let i=0;i<n;i++){
     if(!isActive(sheet,i)) continue;
     total++;
-    if(isSummaryRowValidated(sheet,i,idxCache)) val++;
+    if(validated.has(sheet+'|'+i)) val++;
     const r = getRow(sheet,i);
     const key = (descIdx>=0 ? String(r[descIdx]||'').trim().toUpperCase() : '') +
                 '||' + (ncmIdx>=0 ? String(r[ncmIdx]||'').trim() : '');
@@ -1029,10 +960,8 @@ function drawRows(sheet){
   let shown=0, html='';
   const n = rowCount(sheet);
   const rowOrder=Array.from({length:n},(_,i)=>i);
-  const isSummarySheet = sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas';
-  const idxCache = isSummarySheet ? buildMainDescIndex() : null;
-  if(isSummarySheet){
-    rowOrder.sort((a,b)=>Number(isSummaryRowValidated(sheet,a,idxCache))-Number(isSummaryRowValidated(sheet,b,idxCache))||a-b);
+  if(sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas'){
+    rowOrder.sort((a,b)=>Number(validated.has(sheet+'|'+a))-Number(validated.has(sheet+'|'+b))||a-b);
   }
   for(const i of rowOrder){
     if(deletes.has(sheet+'|'+i)) continue;
@@ -1043,9 +972,7 @@ function drawRows(sheet){
     if(f.ncm    && f.ncmIdx>=0    && String(row[f.ncmIdx]??'').toLowerCase().indexOf(f.ncm)===-1) continue;
     if(f.desc   && f.descIdx>=0   && String(row[f.descIdx]??'').toLowerCase().indexOf(f.desc)===-1) continue;
     const isDup = f.dupSet.has(i);
-    const crossInfo = isSummarySheet ? summaryRowValidationInfo(sheet,i,idxCache) : null;
-    const isVal = validated.has(key) || (crossInfo && crossInfo.isVal);
-    const validatedElsewhere = crossInfo && crossInfo.isVal && !validated.has(key);
+    const isVal = validated.has(key);
     if(f.onlyDup && !isDup) continue;
     if(f.onlyValidated && !isVal) continue;
     if(f.onlyPending && isVal) continue;
@@ -1056,14 +983,12 @@ function drawRows(sheet){
     shown++;
     if(shown>max){ html+=`<tr><td colspan="${d.headers.length+2}" style="text-align:center;padding:14px;color:var(--muted)">Mostrando primeiros ${max} resultados. Refine sua busca.</td></tr>`; break; }
     const cls = (edits[key]?'edited ':'') + (isVal?'val ':'');
-    const validadoPorNome = (crossInfo && crossInfo.quem) || lastEditors[key];
-    const validadoPor = isVal && validadoPorNome ? ` — ${escapeHtml(validadoPorNome)}` : '';
-    const outraAbaNota = validatedElsewhere ? `<br><small style="color:var(--muted)">Já validado na outra aba (${sheet==='NCM_Mesma_Descricao'?'Descrições Duplicadas':'NCM Mesma Descrição'})</small>` : '';
+    const validadoPor = isVal && lastEditors[key] ? ` — ${escapeHtml(lastEditors[key])}` : '';
     const statusBadge = isVal
-      ? `<span class="pill" style="background:#d1fae5;color:#047857">✓ Validado${validadoPor}</span>${outraAbaNota}`
+      ? `<span class="pill" style="background:#d1fae5;color:#047857">✓ Validado${validadoPor}</span>`
       : (isDup ? '<span class="pill" style="background:#fee;color:var(--vermelho)">Repetido</span>'
                : '<span class="pill">Pendente</span>');
-    const tsTxt = validatedElsewhere && crossInfo.quando ? (new Date(crossInfo.quando).toLocaleDateString('pt-BR')+' '+new Date(crossInfo.quando).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})) : fmtTimestamp(key);
+    const tsTxt = fmtTimestamp(key);
     const statusBadgeWithTs = statusBadge + (tsTxt?`<br><small style="color:var(--muted)">${tsTxt}</small>`:'');
     const isDescriptionDuplicate = sheet==='Descricoes_Duplicadas';
     const isNcmMesmaDescricao = sheet==='NCM_Mesma_Descricao';
@@ -1105,9 +1030,7 @@ function drawRows(sheet){
 
 function toggleValidate(sheet, idx){
   const key = sheet+'|'+idx;
-  // usa o status derivado (considera também validação feita pela outra aba de duplicidade)
-  // pra "↺ Desfazer" sempre desfazer de verdade, e não tentar validar de novo por engano.
-  const shouldValidate=!isSummaryRowValidated(sheet, idx);
+  const shouldValidate=!validated.has(key);
   if(shouldValidate) validated.add(key);
   else validated.delete(key);
   touchTimestamp(key);
@@ -2033,6 +1956,6 @@ setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exe
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
 </script>
 
-<script src="duplicidades-review.js?v=20260929-cruzamento-abas-filtro-usuario"></script>
+<script src="duplicidades-review.js?v=20260929-relatorio-produtos-validados"></script>
 <script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
 </body></html>
