@@ -520,8 +520,12 @@ function assignTask(sheet, idx, userId){
   else assignments[key] = {responsavel:userId, atribuidoPor:quem, atribuidoEm:new Date().toISOString(), historico};
   assignmentsStore();
   assignmentSyncSupabase(key);
+  // não deixa a tela "pular" pro topo ao atribuir: guarda e restaura a rolagem,
+  // já que redesenhar a tabela/o painel pode mudar a altura do conteúdo acima.
+  const scrollX = window.scrollX, scrollY = window.scrollY;
   drawRows(sheet);
   refreshAssignmentPanel(sheet);
+  window.scrollTo(scrollX, scrollY);
 }
 function assignmentCounts(sheet){
   const counts = {}; TASK_USERS.forEach(u=>counts[u.id]=0);
