@@ -101,6 +101,39 @@
       })
       .subscribe(status=>{ if(typeof reportRealtimeStatus==='function') reportRealtimeStatus('historico', status); });
   }
+  // ===== Supabase: Rastreabilidade de edições (badges "Protheus pendente/atualizado" e
+  // reforço do Relatório de Produtos Validados) compartilhada entre usuários =====
+  function editTrackingInsert(entry){
+    if(typeof supa==='undefined'||!supa) return;
+    supa.from('edicoes_pendentes').upsert({id:entry.id, row_idx:entry.idx, produto_key:entry.key, campos:entry.fields||[], plataforma:!!entry.platform, protheus:!!entry.protheus, usuario:entry.user, descricao:entry.description, criado_em:entry.ts}).then(({error})=>{ if(error) console.warn('Supabase upsert (edicoes_pendentes) falhou:', error.message); });
+  }
+  function applyRemoteEditTracking(row){
+    if(editTracking.some(x=>x.id===row.id)) return;
+    editTracking.push({id:row.id, idx:row.row_idx, key:row.produto_key, fields:row.campos||[], platform:!!row.plataforma, protheus:!!row.protheus, user:row.usuario, description:row.descricao, ts:row.criado_em});
+  }
+  function resortEditTracking(){editTracking.sort((a,b)=>new Date(b.ts)-new Date(a.ts));safeLocalSet('emtel_edit_tracking',JSON.stringify(editTracking.slice(0,1000)))}
+  async function loadEditTrackingFromSupabase(){
+    if(typeof supa==='undefined'||!supa) return;
+    try{
+      const data = typeof fetchAllRows==='function' ? await fetchAllRows('edicoes_pendentes') : (await supa.from('edicoes_pendentes').select('*')).data||[];
+      const remoteIds=new Set(data.map(r=>r.id));
+      data.forEach(applyRemoteEditTracking);
+      // registros de edição criados antes desta sincronização existir ficaram só neste navegador — sobe pro banco agora
+      editTracking.forEach(entry=>{ if(!entry.id) entry.id=genId(); if(!remoteIds.has(entry.id)) editTrackingInsert(entry); });
+      resortEditTracking();
+      softRender();
+    }catch(e){ console.warn('Falha ao carregar rastreabilidade de edições do Supabase:', e); }
+  }
+  function subscribeEditTrackingRealtime(){
+    if(typeof supa==='undefined'||!supa) return;
+    supa.channel('edicoes-pendentes-changes')
+      .on('postgres_changes', {event:'INSERT', schema:'public', table:'edicoes_pendentes'}, payload=>{
+        applyRemoteEditTracking(payload.new);
+        resortEditTracking();
+        softRender();
+      })
+      .subscribe(status=>{ if(typeof reportRealtimeStatus==='function') reportRealtimeStatus('edicoes_pendentes', status); });
+  }
   // re-render em segundo plano (sincronização/Realtime) sem "pular" a página: usa
   // renderPreserveState() do script principal quando disponível (preserva rolagem/busca/foco).
   function softRender(){ if(typeof renderPreserveState==='function') renderPreserveState(); else render(); }
@@ -350,8 +383,10 @@
     if(!changedFields.length){alert('Nenhum campo foi alterado.');return}
     if(!confirm('Salvar alterações nos campos: '+changedFields.join(', ')+'?'))return;
     originalSave();
-    editTracking.unshift({idx,key:reportKey(idx),fields:changedFields,platform:true,protheus,user:user(),ts:new Date().toISOString(),description});
+    const trackingEntry={id:genId(),idx,key:reportKey(idx),fields:changedFields,platform:true,protheus,user:user(),ts:new Date().toISOString(),description};
+    editTracking.unshift(trackingEntry);
     safeLocalSet('emtel_edit_tracking',JSON.stringify(editTracking.slice(0,1000)));
+    editTrackingInsert(trackingEntry);
     queueMovementSnapshot();
     const validacaoId=genId();
     changes.forEach(c=>logValidationEvent(idx,{sofreuAlteracao:true,campoAlterado:c.header,valorAnterior:c.oldVal,valorNovo:c.newVal,validacaoId}));
@@ -602,4 +637,7 @@
   loadValidationHistoryFromSupabase();
   subscribeValidationHistoryRealtime();
   setInterval(loadValidationHistoryFromSupabase, 8000);
+  loadEditTrackingFromSupabase();
+  subscribeEditTrackingRealtime();
+  setInterval(loadEditTrackingFromSupabase, 8000);
 })();

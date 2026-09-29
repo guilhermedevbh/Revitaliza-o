@@ -522,10 +522,13 @@ function assignTask(sheet, idx, userId){
   assignmentSyncSupabase(key);
   // não deixa a tela "pular" pro topo ao atribuir: guarda e restaura a rolagem,
   // já que redesenhar a tabela/o painel pode mudar a altura do conteúdo acima.
+  // Restaura de novo em requestAnimationFrame porque o navegador às vezes ajusta a
+  // rolagem sozinho (foco perdido pelo <select> recriado) DEPOIS do primeiro restore.
   const scrollX = window.scrollX, scrollY = window.scrollY;
   drawRows(sheet);
   refreshAssignmentPanel(sheet);
   window.scrollTo(scrollX, scrollY);
+  requestAnimationFrame(()=>window.scrollTo(scrollX, scrollY));
 }
 function assignmentCounts(sheet){
   const counts = {}; TASK_USERS.forEach(u=>counts[u.id]=0);
@@ -750,12 +753,17 @@ function renderPreserveState(){
   const checkIds = ['fDup','fVal','fPend'];
   const fieldVals = {}; fieldIds.forEach(id=>{ const el=document.getElementById(id); if(el && el.value) fieldVals[id]=el.value; });
   const checkVals = {}; checkIds.forEach(id=>{ const el=document.getElementById(id); if(el) checkVals[id]=el.checked; });
+  const responsavelFilter = currentFilters.responsavel; // filtro de "Atribuído a" (Todos/usuário/Minhas tarefas)
 
   render();
 
   fieldIds.forEach(id=>{ const el=document.getElementById(id); if(el && fieldVals[id]!==undefined) el.value=fieldVals[id]; });
   checkIds.forEach(id=>{ const el=document.getElementById(id); if(el && checkVals[id]!==undefined) el.checked=checkVals[id]; });
-  const hasRestoredFilter = Object.keys(fieldVals).length || Object.values(checkVals).some(v=>v);
+  if(responsavelFilter){
+    currentFilters.responsavel = responsavelFilter;
+    document.querySelectorAll('#assignFilters .assign-filter').forEach(b=>b.classList.toggle('active', b.dataset.user===responsavelFilter));
+  }
+  const hasRestoredFilter = Object.keys(fieldVals).length || Object.values(checkVals).some(v=>v) || responsavelFilter;
   if(hasRestoredFilter){
     if(fieldVals.search)  currentFilters.q      = fieldVals.search.toLowerCase();
     if(fieldVals.fFilial) currentFilters.filial = fieldVals.fFilial.toLowerCase();
@@ -771,6 +779,10 @@ function renderPreserveState(){
     if(el){ el.focus({preventScroll:true}); if(selStart!=null && el.setSelectionRange){ try{el.setSelectionRange(selStart, selEnd)}catch(e){} } }
   }
   window.scrollTo(scrollX, scrollY);
+  // reforço: alguns navegadores reajustam a rolagem sozinhos logo após trocar o
+  // conteúdo (ex.: foco perdido por um elemento recriado) — restaura de novo no
+  // próximo frame pra garantir que não volte pro topo.
+  requestAnimationFrame(()=>window.scrollTo(scrollX, scrollY));
 }
 
 // ===== RESUMO (cards clicáveis) =====
@@ -1014,7 +1026,7 @@ function drawRows(sheet){
     const assignBadge = !isAssignableSheet ? '' : (assignUser
       ? `<br><span class="assign-badge" style="--chip-color:${assignUser.cor}">${assignUser.emoji} ${escapeHtml(assignUser.nome)}</span>`
       : `<br><span class="assign-badge assign-none">Não atribuído</span>`);
-    const assignSelect = !isAssignableSheet ? '' : `<select class="assign-select" onclick="event.stopPropagation()" onchange="assignTask('${sheet}',${i},this.value)">
+    const assignSelect = !isAssignableSheet ? '' : `<select class="assign-select" onclick="event.stopPropagation()" onchange="this.blur();assignTask('${sheet}',${i},this.value)">
         <option value="">Atribuir tarefa…</option>
         ${TASK_USERS.map(u=>`<option value="${u.id}" ${assignInfo&&assignInfo.responsavel===u.id?'selected':''}>${u.emoji} ${escapeHtml(u.nome)}</option>`).join('')}
       </select>`;
@@ -1960,6 +1972,6 @@ setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exe
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
 </script>
 
-<script src="duplicidades-review.js?v=20260929-fallback-edittracking"></script>
+<script src="duplicidades-review.js?v=20260929-sync-edittracking"></script>
 <script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
 </body></html>
