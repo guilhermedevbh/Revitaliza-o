@@ -396,7 +396,7 @@
   };
   window.closeModal=function(){editContext=null;editOriginalRow=null;return originalClose()};
 
-  function historyHtml(){const logs=history.filter(x=>x.description===description).slice(0,20);return '<section class="panel"><h2>Histórico desta análise</h2>'+(logs.length?logs.map(x=>'<div class="history-row"><b>'+escapeHtml(x.user)+'</b><span>'+escapeHtml(x.action)+'<br>'+escapeHtml(x.detail||'')+'</span><span>Filial '+escapeHtml(x.filial)+'</span><span>'+new Date(x.ts).toLocaleString('pt-BR')+'</span></div>').join(''):'<div class="empty">Nenhuma ação registrada.</div>')+'</section>'}
+  function historyHtml(){const target=String(description||'').trim();const logs=history.filter(x=>String(x.description||'').trim()===target).slice(0,20);return '<section class="panel"><h2>Histórico desta análise</h2>'+(logs.length?logs.map(x=>'<div class="history-row"><b>'+escapeHtml(x.user)+'</b><span>'+escapeHtml(x.action)+'<br>'+escapeHtml(x.detail||'')+'</span><span>Filial '+escapeHtml(x.filial)+'</span><span>'+new Date(x.ts).toLocaleString('pt-BR')+'</span></div>').join(''):'<div class="empty">Nenhuma ação registrada.</div>')+'</section>'}
   window.renderDuplicateReview=function(m){
     const d=DATA[MAIN_SHEET],h=d.headers,list=indices(),active=list.filter(i=>isActive(MAIN_SHEET,i));
     const fi=h.findIndex(x=>/filial|loja|unidade/i.test(x)),ci=h.findIndex(x=>/^codigo$|^código$/i.test(x)),itemIdx=h.findIndex(x=>/cod\.?\s*item|código\s*do\s*item/i.test(x)),ni=h.findIndex(x=>/NCM|IPI/i.test(x)),dateIdx=h.findIndex(x=>/data.*cri|cria[cç][aã]o|inclus[aã]o/i.test(x));
@@ -420,10 +420,10 @@
   };
 
   let catalogFilters={q:'',filial:'',ncm:'',desc:'',status:'all'};
-  window.catalogValidate=function(idx,desc){description=desc;validateReviewRecord(idx)};
-  window.catalogUndo=function(idx,desc){description=desc;undoReviewValidation(idx)};
-  window.catalogEdit=function(idx,desc){description=desc;editReviewRecord(idx)};
-  window.catalogSeparate=function(idx,desc,checked,checkbox){description=desc;toggleReviewDeletion(idx,checked,checkbox)};
+  window.catalogValidate=function(idx,desc){description=String(desc||'').trim();validateReviewRecord(idx)};
+  window.catalogUndo=function(idx,desc){description=String(desc||'').trim();undoReviewValidation(idx)};
+  window.catalogEdit=function(idx,desc){description=String(desc||'').trim();editReviewRecord(idx)};
+  window.catalogSeparate=function(idx,desc,checked,checkbox){description=String(desc||'').trim();toggleReviewDeletion(idx,checked,checkbox)};
   window.catalogFilter=function(){catalogFilters.q=(document.getElementById('catalogSearch')?.value||'').toLowerCase();catalogFilters.filial=(document.getElementById('catalogBranch')?.value||'').toLowerCase();catalogFilters.ncm=(document.getElementById('catalogNcm')?.value||'').toLowerCase();catalogFilters.desc=(document.getElementById('catalogDesc')?.value||'').toLowerCase();drawModernProducts()};
   window.catalogSetStatus=function(status){catalogFilters.status=status;document.querySelectorAll('[data-catalog-status]').forEach(b=>b.classList.toggle('active',b.dataset.catalogStatus===status));drawModernProducts()};
   window.catalogClear=function(){catalogFilters={q:'',filial:'',ncm:'',desc:'',status:'all'};['catalogSearch','catalogBranch','catalogNcm','catalogDesc'].forEach(id=>{const e=document.getElementById(id);if(e)e.value=''});document.querySelectorAll('[data-catalog-status]').forEach(b=>b.classList.toggle('active',b.dataset.catalogStatus==='all'));drawModernProducts()};
