@@ -664,31 +664,53 @@ function isActive(sheet, i){ return !deletes.has(sheet+'|'+i); }
 // "NCM Mesma Descrição" (e vice-versa), porque cada aba guardava sua própria flag
 // independente. Agora o status "validado" dessas duas abas é sempre derivado dos
 // produtos da aba principal que o grupo representa — fonte única de verdade.
-function mainMatchesForSummaryRow(sheet, idx){
-  const source = DATA[sheet], main = DATA[MAIN_SHEET];
-  if(!source || !main) return [];
+// Índice da aba principal por Descrição (e Descrição+NCM), construído UMA vez por
+// chamada e reaproveitado por todas as linhas — sem isso, cada linha das abas de
+// duplicidade varria os ~9 mil produtos da aba principal sozinha (O(n²): travava a
+// troca de aba). buildMainDescIndex() é O(n); cada consulta depois é O(1).
+function buildMainDescIndex(){
+  const main = DATA[MAIN_SHEET];
+  const byDesc = new Map(), byDescNcm = new Map();
+  if(!main) return {byDesc, byDescNcm};
+  const mainDescIdx = main.headers.findIndex(h=>/descric|descr|produto|nome/i.test(h));
+  const mainNcmIdx  = main.headers.findIndex(h=>/NCM|IPI/i.test(h));
+  if(mainDescIdx<0) return {byDesc, byDescNcm};
+  const normalize = v=>String(v??'').trim().replace(/\s+/g,' ').toUpperCase();
+  const n = rowCount(MAIN_SHEET);
+  for(let i=0;i<n;i++){
+    if(!isActive(MAIN_SHEET,i)) continue;
+    const row = getRow(MAIN_SHEET,i);
+    const desc = normalize(row[mainDescIdx]);
+    if(!desc) continue;
+    if(!byDesc.has(desc)) byDesc.set(desc, []);
+    byDesc.get(desc).push(i);
+    if(mainNcmIdx>=0){
+      const k = desc+'||'+normalize(row[mainNcmIdx]);
+      if(!byDescNcm.has(k)) byDescNcm.set(k, []);
+      byDescNcm.get(k).push(i);
+    }
+  }
+  return {byDesc, byDescNcm};
+}
+function mainMatchesForSummaryRow(sheet, idx, idxCache){
+  const source = DATA[sheet];
+  if(!source) return [];
   const sourceRow = getRow(sheet, idx);
   const sourceDescIdx = source.headers.findIndex(h=>/descric|descr|produto|nome/i.test(h));
   const sourceNcmIdx  = source.headers.findIndex(h=>/NCM|IPI/i.test(h));
-  const mainDescIdx = main.headers.findIndex(h=>/descric|descr|produto|nome/i.test(h));
-  const mainNcmIdx  = main.headers.findIndex(h=>/NCM|IPI/i.test(h));
-  if(sourceDescIdx<0 || mainDescIdx<0) return [];
+  if(sourceDescIdx<0) return [];
   const normalize = v=>String(v??'').trim().replace(/\s+/g,' ').toUpperCase();
   const targetDescription = normalize(sourceRow[sourceDescIdx]);
-  const targetNcm = sourceNcmIdx>=0 ? normalize(sourceRow[sourceNcmIdx]) : '';
   if(!targetDescription) return [];
-  const matches = [];
-  for(let i=0;i<rowCount(MAIN_SHEET);i++){
-    if(!isActive(MAIN_SHEET,i)) continue;
-    const row = getRow(MAIN_SHEET,i);
-    if(normalize(row[mainDescIdx])!==targetDescription) continue;
-    if(sheet==='NCM_Mesma_Descricao' && targetNcm && mainNcmIdx>=0 && normalize(row[mainNcmIdx])!==targetNcm) continue;
-    matches.push(i);
+  const cache = idxCache || buildMainDescIndex();
+  if(sheet==='NCM_Mesma_Descricao'){
+    const targetNcm = sourceNcmIdx>=0 ? normalize(sourceRow[sourceNcmIdx]) : '';
+    return cache.byDescNcm.get(targetDescription+'||'+targetNcm) || [];
   }
-  return matches;
+  return cache.byDesc.get(targetDescription) || [];
 }
-function summaryRowValidationInfo(sheet, idx){
-  const matches = mainMatchesForSummaryRow(sheet, idx);
+function summaryRowValidationInfo(sheet, idx, idxCache){
+  const matches = mainMatchesForSummaryRow(sheet, idx, idxCache);
   if(!matches.length || !matches.every(i=>validated.has(MAIN_SHEET+'|'+i))) return {isVal:false, quem:'', quando:''};
   let quem='', quando='';
   matches.forEach(i=>{
@@ -697,10 +719,10 @@ function summaryRowValidationInfo(sheet, idx){
   });
   return {isVal:true, quem, quando};
 }
-function isSummaryRowValidated(sheet, i){
+function isSummaryRowValidated(sheet, i, idxCache){
   const key = sheet+'|'+i;
   if(sheet!=='NCM_Mesma_Descricao' && sheet!=='Descricoes_Duplicadas') return validated.has(key);
-  return validated.has(key) || summaryRowValidationInfo(sheet, i).isVal;
+  return validated.has(key) || summaryRowValidationInfo(sheet, i, idxCache).isVal;
 }
 
 function computeStats(sheet){
@@ -711,12 +733,13 @@ function computeStats(sheet){
   const filialIdx = headers.findIndex(h=>/filial|loja|unidade/i.test(h));
   const groups = new Map();          // chave duplicidade -> [i,i,...]
   const filiaisPorChave = new Map(); // chave -> Set(filial)
+  const idxCache = (sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas') ? buildMainDescIndex() : null;
   let total = 0, val = 0;
   const n = rowCount(sheet);
   for(let i=0;i<n;i++){
     if(!isActive(sheet,i)) continue;
     total++;
-    if(isSummaryRowValidated(sheet,i)) val++;
+    if(isSummaryRowValidated(sheet,i,idxCache)) val++;
     const r = getRow(sheet,i);
     const key = (descIdx>=0 ? String(r[descIdx]||'').trim().toUpperCase() : '') +
                 '||' + (ncmIdx>=0 ? String(r[ncmIdx]||'').trim() : '');
@@ -1006,8 +1029,10 @@ function drawRows(sheet){
   let shown=0, html='';
   const n = rowCount(sheet);
   const rowOrder=Array.from({length:n},(_,i)=>i);
-  if(sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas'){
-    rowOrder.sort((a,b)=>Number(isSummaryRowValidated(sheet,a))-Number(isSummaryRowValidated(sheet,b))||a-b);
+  const isSummarySheet = sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas';
+  const idxCache = isSummarySheet ? buildMainDescIndex() : null;
+  if(isSummarySheet){
+    rowOrder.sort((a,b)=>Number(isSummaryRowValidated(sheet,a,idxCache))-Number(isSummaryRowValidated(sheet,b,idxCache))||a-b);
   }
   for(const i of rowOrder){
     if(deletes.has(sheet+'|'+i)) continue;
@@ -1018,7 +1043,7 @@ function drawRows(sheet){
     if(f.ncm    && f.ncmIdx>=0    && String(row[f.ncmIdx]??'').toLowerCase().indexOf(f.ncm)===-1) continue;
     if(f.desc   && f.descIdx>=0   && String(row[f.descIdx]??'').toLowerCase().indexOf(f.desc)===-1) continue;
     const isDup = f.dupSet.has(i);
-    const crossInfo = (sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas') ? summaryRowValidationInfo(sheet,i) : null;
+    const crossInfo = isSummarySheet ? summaryRowValidationInfo(sheet,i,idxCache) : null;
     const isVal = validated.has(key) || (crossInfo && crossInfo.isVal);
     const validatedElsewhere = crossInfo && crossInfo.isVal && !validated.has(key);
     if(f.onlyDup && !isDup) continue;
