@@ -450,7 +450,7 @@
   };
 
   // ===== Relatório de Produtos Validados =====
-  let validatedReportFilter={status:'all',q:'',usuario:''};
+  let validatedReportFilter={status:'all',q:''};
   function computeValidatedReportRows(){
     const byProduct=new Map();
     validationHistory.forEach(e=>{
@@ -510,28 +510,11 @@
       if(f.status==='pendentes'&&r.status!=='Pendente')return false;
       if(f.status==='validados'&&r.status==='Pendente')return false;
       if(f.q&&!(r.codigo+' '+r.descricao).toLowerCase().includes(f.q))return false;
-      if(f.usuario&&!r.usuarios.includes(f.usuario))return false;
       return true;
     });
   }
-  window.setValidatedReportUser=function(v){validatedReportFilter.usuario=v;renderValidatedReport(document.getElementById('main'))};
-  function userValidationStats(nome){
-    const eventos=validationHistory.filter(e=>e.usuario===nome);
-    const produtos=new Set(eventos.map(e=>e.produtoKey));
-    const alterados=new Set(eventos.filter(e=>e.sofreuAlteracao).map(e=>e.produtoKey));
-    const semAlteracao=[...produtos].filter(k=>!alterados.has(k));
-    const totalAlteracoes=eventos.filter(e=>e.sofreuAlteracao).length;
-    const ultima=eventos.reduce((max,e)=>(!max||e.ts>max)?e.ts:max,null);
-    return {produtos:produtos.size, alterados:alterados.size, semAlteracao:semAlteracao.length, totalAlteracoes, ultima};
-  }
   window.renderValidatedReport=function(m){
     const allRows=computeValidatedReportRows(),stats=validatedReportStats(allRows),rows=applyValidatedReportFilter(allRows).sort((a,b)=>new Date(b.ultimaAtividade||0)-new Date(a.ultimaAtividade||0));
-    const usuarios=[...new Set(validationHistory.map(e=>e.usuario).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
-    const userOptions='<option value="">Todos os usuários</option>'+usuarios.map(u=>'<option value="'+escapeHtml(u)+'" '+(validatedReportFilter.usuario===u?'selected':'')+'>'+escapeHtml(u)+'</option>').join('');
-    const userPanel=validatedReportFilter.usuario?(function(){
-      const s=userValidationStats(validatedReportFilter.usuario),pct=s.produtos?Math.round(s.semAlteracao*100/s.produtos):0;
-      return '<div class="review-stats"><div class="review-stat"><b>'+escapeHtml(validatedReportFilter.usuario)+'</b><span>Usuário</span></div><div class="review-stat"><b>'+s.produtos+'</b><span>Produtos validados</span></div><div class="review-stat"><b>'+s.alterados+'</b><span>Alterados</span></div><div class="review-stat"><b>'+s.semAlteracao+'</b><span>Sem alteração ('+pct+'%)</span></div><div class="review-stat"><b>'+s.totalAlteracoes+'</b><span>Total de alterações</span></div><div class="review-stat"><b>'+(s.ultima?new Date(s.ultima).toLocaleString('pt-BR'):'—')+'</b><span>Última validação</span></div></div>';
-    })():'';
     const statusPill=s=>{
       const map={'Validado — Sem alteração':['🟢','#047857','#d1fae5'],'Validado — Com alteração':['🟠','#92610a','#fff3d6'],'Pendente':['🔴','#b91c1c','#fee']};
       const [icon,color,bg]=map[s]||map['Pendente'];
@@ -548,8 +531,7 @@
       +'</div>'
       +'<section class="panel">'
       +'<div class="report-toolbar"><div><h2 style="margin-bottom:4px">Produtos</h2><p>Clique em um produto para ver o histórico completo.</p></div><button class="btn" onclick="exportValidatedReport()">⬇ Exportar CSV</button></div>'
-      +'<div class="toolbar"><input id="validatedReportSearch" type="text" placeholder="🔍 Buscar por código ou descrição..." value="'+escapeHtml(validatedReportFilter.q)+'" oninput="filterValidatedReport()" style="flex:1 1 240px"><select onchange="setValidatedReportUser(this.value)" style="flex:0 1 220px">'+userOptions+'</select></div>'
-      +userPanel
+      +'<div class="toolbar"><input id="validatedReportSearch" type="text" placeholder="🔍 Buscar por código ou descrição..." value="'+escapeHtml(validatedReportFilter.q)+'" oninput="filterValidatedReport()"></div>'
       +'<div class="catalog-status-filters">'
       +'<button class="'+(validatedReportFilter.status==='all'?'active':'')+'" onclick="setValidatedReportStatus(\'all\')">Todos</button>'
       +'<button class="'+(validatedReportFilter.status==='validados'?'active':'')+'" onclick="setValidatedReportStatus(\'validados\')">Validados</button>'
