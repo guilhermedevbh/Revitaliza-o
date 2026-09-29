@@ -457,6 +457,21 @@
       if(!byProduct.has(e.produtoKey)) byProduct.set(e.produtoKey,{produtoKey:e.produtoKey,codigo:e.codigo,descricao:e.descricao,filial:e.filial,ncm:e.ncm,eventos:[]});
       byProduct.get(e.produtoKey).eventos.push(e);
     });
+    // produtos alterados antes deste relatório existir só tinham o registro no
+    // "Histórico desta análise" (editTracking, usado no card de Alterações Pendentes e
+    // na Configuração) — sem isso o relatório mostrava "Com alteração: 0" mesmo com
+    // edições reais já feitas. Só usa editTracking como reforço quando o produto AINDA
+    // não tem nenhum evento em validationHistory (evita contar a mesma edição 2x, já
+    // que toda edição nova grava nos dois ao mesmo tempo).
+    editTracking.forEach(t=>{
+      if(!t.key || byProduct.has(t.key)) return;
+      const data=reportProductData(t.idx);
+      byProduct.set(t.key,{produtoKey:t.key,codigo:data.code,descricao:data.description,filial:data.branch,ncm:data.ncm,eventos:[{
+        id:'legacy-edit-'+t.idx+'-'+t.ts, produtoKey:t.key, usuario:t.user,
+        sofreuAlteracao:true, campoAlterado:(t.fields||[]).join(', ')||null,
+        valorAnterior:null, valorNovo:null, ts:t.ts
+      }]});
+    });
     // garante uma linha para todo produto validado hoje, mesmo sem histórico registrado (validado antes deste recurso existir)
     for(let i=0;i<rowCount(MAIN_SHEET);i++){
       const key=reportKey(i);
@@ -487,7 +502,7 @@
     const total=rows.filter(r=>r.status!=='Pendente').length;
     const alterados=rows.filter(r=>r.status==='Validado — Com alteração').length;
     const semAlteracao=rows.filter(r=>r.status==='Validado — Sem alteração').length;
-    const totalAlteracoes=validationHistory.filter(e=>e.sofreuAlteracao).length;
+    const totalAlteracoes=rows.reduce((sum,r)=>sum+r.qtdAlteracoes,0);
     const pendentes=rows.filter(r=>r.status==='Pendente').length;
     return {total,alterados,semAlteracao,totalAlteracoes,pendentes,pctAlterado:total?Math.round(alterados*100/total):0,pctSemAlteracao:total?Math.round(semAlteracao*100/total):0};
   }
