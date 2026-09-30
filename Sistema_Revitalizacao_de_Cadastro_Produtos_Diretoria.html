@@ -146,7 +146,7 @@ header p{font-size:13px;margin-top:6px;opacity:.82}
 @keyframes syncPulse{0%,100%{opacity:1}50%{opacity:.35}}
 .user-name-input{padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:#fff;font-size:12px;font-weight:700;backdrop-filter:blur(8px);width:150px}
 .user-name-input::placeholder{color:rgba(255,255,255,.75)}
-.access-gate{position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,#0b1c3d,#152a56 55%,#1e4fb8);display:flex;align-items:center;justify-content:center;padding:20px}
+.access-gate{position:fixed;inset:0;z-index:9999;background:linear-gradient(135deg,rgba(11,28,61,.72),rgba(21,42,86,.6) 55%,rgba(30,79,184,.55)),url('login-bg-emtel.webp') center/cover no-repeat;display:flex;align-items:center;justify-content:center;padding:20px}
 .access-gate.hidden{display:none}
 .access-gate-card{background:#fff;border-radius:16px;padding:32px 28px;max-width:340px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35)}
 .access-gate-logo{background:#1e4fb8;border-radius:10px;padding:10px 16px;display:inline-flex;margin-bottom:14px}
@@ -766,11 +766,14 @@ window.scheduleBackgroundRender = scheduleBackgroundRender;
 // "pular" a página nem apagar o que o usuário está digitando/selecionando.
 function renderPreserveState(){
   const scrollX = window.scrollX, scrollY = window.scrollY;
-  // a tabela de produtos rola dentro do próprio ".tbl-wrap" (barra de rolagem
-  // interna, além da rolagem da página) — como render() recria essa div
-  // inteira, o scrollTop dela também precisa ser salvo/restaurado, senão a
-  // lista volta pro topo mesmo com a rolagem da página preservada.
-  const tblWrapBefore = document.querySelector('#main .tbl-wrap');
+  // em várias abas (Produtos Cadastrados Protheus, NCM Mesma Descrição,
+  // Descrições Duplicadas, Mantidos Ativos, Desativação, Produtos Validados)
+  // a tabela rola dentro do próprio painel (".tbl-wrap" ou ".review-wrap"),
+  // com barra de rolagem interna própria, além da rolagem da página — como
+  // render() recria esse painel do zero, o scrollTop dele também precisa ser
+  // salvo/restaurado, senão a lista volta pro topo mesmo com a rolagem da
+  // página preservada.
+  const tblWrapBefore = document.querySelector('#main .tbl-wrap, #main .review-wrap');
   const tblScrollTop = tblWrapBefore ? tblWrapBefore.scrollTop : null;
   const active = document.activeElement;
   const activeId = active && active.id;
@@ -808,7 +811,7 @@ function renderPreserveState(){
   }
   window.scrollTo(scrollX, scrollY);
   if(tblScrollTop!=null){
-    const tblWrapAfter = document.querySelector('#main .tbl-wrap');
+    const tblWrapAfter = document.querySelector('#main .tbl-wrap, #main .review-wrap');
     if(tblWrapAfter) tblWrapAfter.scrollTop = tblScrollTop;
   }
   // reforço: alguns navegadores reajustam a rolagem sozinhos logo após trocar o
@@ -817,7 +820,7 @@ function renderPreserveState(){
   requestAnimationFrame(()=>{
     window.scrollTo(scrollX, scrollY);
     if(tblScrollTop!=null){
-      const tblWrapRaf = document.querySelector('#main .tbl-wrap');
+      const tblWrapRaf = document.querySelector('#main .tbl-wrap, #main .review-wrap');
       if(tblWrapRaf) tblWrapRaf.scrollTop = tblScrollTop;
     }
   });
@@ -2010,6 +2013,6 @@ setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exe
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
 </script>
 
-<script src="duplicidades-review.js?v=20260930-preserve-table-scroll"></script>
+<script src="duplicidades-review.js?v=20260930-preserve-scroll-all-tabs"></script>
 <script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
 </body></html>
