@@ -136,7 +136,7 @@
   }
   // re-render em segundo plano (sincronização/Realtime) sem "pular" a página: usa
   // renderPreserveState() do script principal quando disponível (preserva rolagem/busca/foco).
-  function softRender(){ if(typeof renderPreserveState==='function') renderPreserveState(); else render(); }
+  function softRender(){ if(typeof window.scheduleBackgroundRender==='function') window.scheduleBackgroundRender(); else if(typeof renderPreserveState==='function') renderPreserveState(); else render(); }
   function saveDeactivationReport(){safeLocalSet('emtel_deactivation_report',JSON.stringify(deactivationReport.slice(0,2000)));queueMovementSnapshot()}
   function saveActiveReport(){safeLocalSet('emtel_active_report',JSON.stringify(activeReport.slice(0,2000)));queueMovementSnapshot()}
   // ===== Supabase: Relatório de Desativação compartilhado entre usuários =====
