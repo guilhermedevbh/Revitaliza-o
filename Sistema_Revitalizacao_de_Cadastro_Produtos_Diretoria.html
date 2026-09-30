@@ -766,6 +766,12 @@ window.scheduleBackgroundRender = scheduleBackgroundRender;
 // "pular" a página nem apagar o que o usuário está digitando/selecionando.
 function renderPreserveState(){
   const scrollX = window.scrollX, scrollY = window.scrollY;
+  // a tabela de produtos rola dentro do próprio ".tbl-wrap" (barra de rolagem
+  // interna, além da rolagem da página) — como render() recria essa div
+  // inteira, o scrollTop dela também precisa ser salvo/restaurado, senão a
+  // lista volta pro topo mesmo com a rolagem da página preservada.
+  const tblWrapBefore = document.querySelector('#main .tbl-wrap');
+  const tblScrollTop = tblWrapBefore ? tblWrapBefore.scrollTop : null;
   const active = document.activeElement;
   const activeId = active && active.id;
   const isTextInput = active && active.tagName==='INPUT' && (active.type==='text'||active.type===undefined||active.type==='search');
@@ -801,10 +807,20 @@ function renderPreserveState(){
     if(el){ el.focus({preventScroll:true}); if(selStart!=null && el.setSelectionRange){ try{el.setSelectionRange(selStart, selEnd)}catch(e){} } }
   }
   window.scrollTo(scrollX, scrollY);
+  if(tblScrollTop!=null){
+    const tblWrapAfter = document.querySelector('#main .tbl-wrap');
+    if(tblWrapAfter) tblWrapAfter.scrollTop = tblScrollTop;
+  }
   // reforço: alguns navegadores reajustam a rolagem sozinhos logo após trocar o
   // conteúdo (ex.: foco perdido por um elemento recriado) — restaura de novo no
   // próximo frame pra garantir que não volte pro topo.
-  requestAnimationFrame(()=>window.scrollTo(scrollX, scrollY));
+  requestAnimationFrame(()=>{
+    window.scrollTo(scrollX, scrollY);
+    if(tblScrollTop!=null){
+      const tblWrapRaf = document.querySelector('#main .tbl-wrap');
+      if(tblWrapRaf) tblWrapRaf.scrollTop = tblScrollTop;
+    }
+  });
 }
 
 // ===== RESUMO (cards clicáveis) =====
@@ -1994,6 +2010,6 @@ setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exe
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
 </script>
 
-<script src="duplicidades-review.js?v=20260930-suppress-bg-render"></script>
+<script src="duplicidades-review.js?v=20260930-preserve-table-scroll"></script>
 <script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
 </body></html>
