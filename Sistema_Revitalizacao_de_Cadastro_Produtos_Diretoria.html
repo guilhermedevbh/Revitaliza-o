@@ -411,7 +411,7 @@ async function loadStateFromSupabase(){
     data.forEach(applyRemoteRow);
     backfillValidatedNames();
     persist();
-    renderPreserveState();
+    scheduleBackgroundRender();
   }catch(e){ console.warn('Falha ao carregar dados do Supabase:', e); }
 }
 
@@ -425,7 +425,7 @@ function subscribeSupabaseRealtime(){
       } else {
         applyRemoteRow(payload.new);
       }
-      persist(); renderPreserveState();
+      persist(); scheduleBackgroundRender();
     })
     .subscribe(status=>reportRealtimeStatus('validacoes', status));
 }
@@ -493,7 +493,7 @@ async function loadAssignmentsFromSupabase(){
     const data = await fetchAllRows('atribuicoes');
     data.forEach(applyRemoteAssignment);
     assignmentsStore();
-    renderPreserveState();
+    scheduleBackgroundRender();
   }catch(e){ console.warn('Falha ao carregar atribuições do Supabase:', e); }
 }
 function subscribeAssignmentsRealtime(){
@@ -506,11 +506,12 @@ function subscribeAssignmentsRealtime(){
       } else {
         applyRemoteAssignment(payload.new);
       }
-      assignmentsStore(); renderPreserveState();
+      assignmentsStore(); scheduleBackgroundRender();
     })
     .subscribe(status=>reportRealtimeStatus('atribuicoes', status));
 }
 function assignTask(sheet, idx, userId){
+  markUserInteracting();
   const quem = ensureReviewUserName();
   if(!quem) return;
   const key = sheet+'|'+idx;
@@ -739,11 +740,38 @@ function render(){
   return renderSheet(m, current);
 }
 
+// evita que uma atualização vinda de OUTRO usuário (Realtime/polling) troque o
+// DOM embaixo do dedo de quem está com um <select>/campo aberto neste exato
+// momento (ex.: abrindo "Atribuir tarefa…"), o que fecha o menu e "pula" a
+// página mesmo com a rolagem restaurada depois. markUserInteracting() é
+// chamado ao focar/abrir esses controles; enquanto a janela estiver ativa,
+// a atualização em segundo plano fica em espera e roda assim que ela passar.
+let backgroundRenderSuppressUntil = 0;
+let backgroundRenderPending = null;
+function markUserInteracting(ms){ backgroundRenderSuppressUntil = Date.now() + (ms || 1500); }
+function scheduleBackgroundRender(){
+  const wait = backgroundRenderSuppressUntil - Date.now();
+  if(wait > 0){
+    if(backgroundRenderPending) return;
+    backgroundRenderPending = setTimeout(()=>{ backgroundRenderPending=null; scheduleBackgroundRender(); }, wait + 30);
+    return;
+  }
+  renderPreserveState();
+}
+window.markUserInteracting = markUserInteracting;
+window.scheduleBackgroundRender = scheduleBackgroundRender;
+
 // re-render usado pelas sincronizações em segundo plano (Supabase/Realtime/polling):
 // preserva rolagem, texto de busca/filtros digitados e o foco atual, para não
 // "pular" a página nem apagar o que o usuário está digitando/selecionando.
 function renderPreserveState(){
   const scrollX = window.scrollX, scrollY = window.scrollY;
+  // a tabela de produtos rola dentro do próprio ".tbl-wrap" (barra de rolagem
+  // interna, além da rolagem da página) — como render() recria essa div
+  // inteira, o scrollTop dela também precisa ser salvo/restaurado, senão a
+  // lista volta pro topo mesmo com a rolagem da página preservada.
+  const tblWrapBefore = document.querySelector('#main .tbl-wrap');
+  const tblScrollTop = tblWrapBefore ? tblWrapBefore.scrollTop : null;
   const active = document.activeElement;
   const activeId = active && active.id;
   const isTextInput = active && active.tagName==='INPUT' && (active.type==='text'||active.type===undefined||active.type==='search');
@@ -779,10 +807,20 @@ function renderPreserveState(){
     if(el){ el.focus({preventScroll:true}); if(selStart!=null && el.setSelectionRange){ try{el.setSelectionRange(selStart, selEnd)}catch(e){} } }
   }
   window.scrollTo(scrollX, scrollY);
+  if(tblScrollTop!=null){
+    const tblWrapAfter = document.querySelector('#main .tbl-wrap');
+    if(tblWrapAfter) tblWrapAfter.scrollTop = tblScrollTop;
+  }
   // reforço: alguns navegadores reajustam a rolagem sozinhos logo após trocar o
   // conteúdo (ex.: foco perdido por um elemento recriado) — restaura de novo no
   // próximo frame pra garantir que não volte pro topo.
-  requestAnimationFrame(()=>window.scrollTo(scrollX, scrollY));
+  requestAnimationFrame(()=>{
+    window.scrollTo(scrollX, scrollY);
+    if(tblScrollTop!=null){
+      const tblWrapRaf = document.querySelector('#main .tbl-wrap');
+      if(tblWrapRaf) tblWrapRaf.scrollTop = tblScrollTop;
+    }
+  });
 }
 
 // ===== RESUMO (cards clicáveis) =====
@@ -1026,7 +1064,7 @@ function drawRows(sheet){
     const assignBadge = !isAssignableSheet ? '' : (assignUser
       ? `<br><span class="assign-badge" style="--chip-color:${assignUser.cor}">${assignUser.emoji} ${escapeHtml(assignUser.nome)}</span>`
       : `<br><span class="assign-badge assign-none">Não atribuído</span>`);
-    const assignSelect = !isAssignableSheet ? '' : `<select class="assign-select" onclick="event.stopPropagation()" onchange="this.blur();assignTask('${sheet}',${i},this.value)">
+    const assignSelect = !isAssignableSheet ? '' : `<select class="assign-select" onclick="event.stopPropagation()" onmousedown="event.stopPropagation();markUserInteracting()" onfocus="markUserInteracting()" onchange="this.blur();assignTask('${sheet}',${i},this.value)">
         <option value="">Atribuir tarefa…</option>
         ${TASK_USERS.map(u=>`<option value="${u.id}" ${assignInfo&&assignInfo.responsavel===u.id?'selected':''}>${u.emoji} ${escapeHtml(u.nome)}</option>`).join('')}
       </select>`;
@@ -1972,6 +2010,6 @@ setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exe
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
 </script>
 
-<script src="duplicidades-review.js?v=20260929-sync-edittracking"></script>
+<script src="duplicidades-review.js?v=20260930-preserve-table-scroll"></script>
 <script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
 </body></html>
