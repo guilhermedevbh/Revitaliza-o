@@ -436,6 +436,28 @@ function touchTimestamp(key){
   if(quem) lastEditors[key] = quem;
   supabaseUpsert(key);
 }
+// upsert em lote (1 requisição por bloco de 300) — usado por automações que
+// mexem em muitos registros de uma vez (ex.: separar uma filial inteira para
+// desativação), pra não disparar centenas/milhares de requisições individuais.
+function supabaseUpsertBatch(keys){
+  if(!supa || !keys.length) return;
+  const rows = keys.map(key=>{
+    const [sheet, idxStr] = key.split('|');
+    return {
+      key, sheet, row_idx: Number(idxStr),
+      validado: validated.has(key),
+      excluido: deletes.has(key),
+      edicao: edits[key] || null,
+      usuario: lastEditors[key] || null,
+      atualizado_em: timestamps[key] || new Date().toISOString()
+    };
+  });
+  const chunkSize = 300;
+  for(let i=0;i<rows.length;i+=chunkSize){
+    supa.from('validacoes').upsert(rows.slice(i,i+chunkSize)).then(({error})=>{ if(error) console.warn('Supabase upsert em lote falhou:', error.message); });
+  }
+}
+window.supabaseUpsertBatch = supabaseUpsertBatch;
 
 // ===== Atribuição de tarefas por usuário (NCM Mesma Descrição / Descrições Duplicadas) =====
 const TASK_USERS = [
@@ -2013,6 +2035,6 @@ setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exe
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
 </script>
 
-<script src="duplicidades-review.js?v=20260930-preserve-scroll-all-tabs"></script>
+<script src="duplicidades-review.js?v=20261001-filial-deactivation-automation"></script>
 <script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
 </body></html>
