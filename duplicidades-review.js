@@ -19,6 +19,7 @@
   window.safeEmtelStore=safeLocalSet;
   const editTracking=readStoredArray('emtel_edit_tracking');
   const selectedForDeletion=new Set();
+  window.selectedForDeletion=selectedForDeletion; // usado pelo card "Separados p/ desativação" no Resumo (script principal)
   const history=readStoredArray('emtel_duplicate_history');
   const deactivationReport=readStoredArray('emtel_deactivation_report');
   const activeReport=readStoredArray('emtel_active_report');
