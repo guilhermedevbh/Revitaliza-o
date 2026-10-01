@@ -15,5 +15,28 @@ html[data-theme="dark"] .badge{color:#fff!important}
 html[data-theme="dark"] .global-control{color:#fff!important;background:rgba(255,255,255,.16)!important;border-color:rgba(255,255,255,.38)!important}
 html[data-theme="dark"] input,html[data-theme="dark"] textarea,html[data-theme="dark"] select{color:#fff!important;font-weight:500}
 html[data-theme="dark"] input::placeholder,html[data-theme="dark"] textarea::placeholder{color:#9eacc0!important;opacity:1}
-html[data-theme="dark"] .pill{color:#f0f5fc!important;border:1px solid rgba(255,255,255,.12)}
+html[data-theme="dark"] .pill{background:#24354d!important;color:#f0f5fc!important;border:1px solid rgba(255,255,255,.12)}
 html[data-theme="dark"] .exec-legend-item,html[data-theme="dark"] .branch-bar-head span,html[data-theme="dark"] .exec-updated{color:#c4cfde!important}
+/* Selos e badges com cor fixa (muitos escritos como style="" inline) ficavam claros mesmo
+   no modo escuro, "furando" o fundo escuro — força a versão escura, até sobre inline style. */
+html[data-theme="dark"] tbody tr.val{background:#113328!important}
+html[data-theme="dark"] .card:nth-child(2) .metric-icon{background:#3a1b22!important;color:#ff8da3!important}
+html[data-theme="dark"] .card:nth-child(3) .metric-icon{background:#123327!important;color:#53e5ad!important}
+html[data-theme="dark"] .card:nth-child(4) .metric-icon{background:#3a2c10!important;color:#f3b94d!important}
+html[data-theme="dark"] .card:nth-child(5) .metric-icon{background:#352a12!important;color:#d6a14a!important}
+html[data-theme="dark"] .ia-error{background:#3a1b22!important;color:#ff8da3!important}
+html[data-theme="dark"] .ia-ncm-recommend-empty{background:#3a2c10!important;color:#f3b94d!important}
+html[data-theme="dark"] .ia-ncm-box-red{background:#3a1b22!important;border-color:#6b2b36!important}
+html[data-theme="dark"] .ia-ncm-box-green{background:#123327!important;border-color:#1e5c46!important}
+html[data-theme="dark"] .assign-filter{background:#162438!important;color:#dce5f2!important}
+html[data-theme="dark"] .primary-badge{background:#123327!important;color:#53e5ad!important}
+html[data-theme="dark"] .ncm-match{background:#3a1b22!important;color:#ff8da3!important}
+html[data-theme="dark"] .ncm-single{background:#24354d!important;color:#9cabc0!important}
+html[data-theme="dark"] .branch-key.c0{background:#12243c!important}html[data-theme="dark"] .branch-key.c1{background:#102d29!important}html[data-theme="dark"] .branch-key.c2{background:#32291a!important}html[data-theme="dark"] .branch-key.c3{background:#2c203b!important}html[data-theme="dark"] .branch-key.c4{background:#351d27!important}html[data-theme="dark"] .branch-key.c5{background:#122d32!important}
+html[data-theme="dark"] .sync-platform{background:#123327!important;color:#53e5ad!important}
+html[data-theme="dark"] .sync-protheus{background:#162b4c!important;color:#8bb4ff!important}
+html[data-theme="dark"] .sync-pending{background:#3a2c10!important;color:#f3b94d!important}
+html[data-theme="dark"] .report-status.selected{background:#3a2c10!important;color:#f3b94d!important}
+html[data-theme="dark"] .report-status.done{background:#123327!important;color:#53e5ad!important}
+html[data-theme="dark"] .select-delete{background:#3a1b22!important;color:#ff8da3!important;border-color:#6b2b36!important}
+html[data-theme="dark"] .select-delete.selected{background:#4a1620!important;border-color:#8c2d3d!important}
