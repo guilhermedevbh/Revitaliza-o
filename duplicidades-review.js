@@ -206,6 +206,61 @@
   }
   window.loadDesativacaoFromSupabase = loadDesativacaoFromSupabase;
   window.subscribeDesativacaoRealtime = subscribeDesativacaoRealtime;
+  // ===== Supabase: Relatório Mantidos Ativos compartilhado entre usuários =====
+  // Ficava só salvo no navegador de quem validou — por isso o nome de quem validou (e de
+  // quem a tarefa estava atribuída) parecia "sumir": outros usuários/sessões nunca viam.
+  function activeReportRowFromItem(item){
+    return {
+      key:item.key, idx:item.idx, codigo:item.code, codigo_item:item.itemCode,
+      descricao:item.description, filial:item.branch, ncm:item.ncm, tipo:item.type,
+      unidade:item.unit, grupo:item.group, criado_em_origem:item.createdAt,
+      decisao:item.decision, validado_em:item.validatedAt||null, usuario:item.user||null,
+      atribuido_para:item.atribuidoPara||null, atualizado_em:new Date().toISOString()
+    };
+  }
+  function activeReportUpsert(item){
+    if(typeof supa==='undefined'||!supa) return;
+    supa.from('cadastros_mantidos_ativos').upsert(activeReportRowFromItem(item)).then(({error})=>{ if(error) console.warn('Supabase upsert (cadastros_mantidos_ativos) falhou:', error.message); });
+  }
+  function activeReportDelete(key){
+    if(typeof supa==='undefined'||!supa) return;
+    supa.from('cadastros_mantidos_ativos').delete().eq('key', key).then(({error})=>{ if(error) console.warn('Supabase delete (cadastros_mantidos_ativos) falhou:', error.message); });
+  }
+  function applyRemoteActiveReport(row){
+    const item={key:row.key, idx:row.idx, code:row.codigo, itemCode:row.codigo_item, description:row.descricao, branch:row.filial, ncm:row.ncm, type:row.tipo, unit:row.unidade, group:row.grupo, createdAt:row.criado_em_origem, decision:row.decisao, validatedAt:row.validado_em, user:row.usuario, atribuidoPara:row.atribuido_para};
+    const pos=activeReport.findIndex(x=>x.key===row.key);
+    if(pos>=0) activeReport[pos]=item; else activeReport.unshift(item);
+  }
+  function removeLocalActiveReport(key){
+    for(let i=activeReport.length-1;i>=0;i--) if(activeReport[i].key===key) activeReport.splice(i,1);
+  }
+  async function loadActiveReportFromSupabase(){
+    if(typeof supa==='undefined'||!supa) return;
+    try{
+      const data = typeof fetchAllRows==='function' ? await fetchAllRows('cadastros_mantidos_ativos') : (await supa.from('cadastros_mantidos_ativos').select('*')).data||[];
+      const remoteKeys=new Set(data.map(r=>r.key));
+      data.forEach(applyRemoteActiveReport);
+      // registros validados antes da sincronização com o Supabase existir ficaram só neste
+      // navegador — sobe eles agora para o banco.
+      activeReport.forEach(item=>{ if(!remoteKeys.has(item.key)) activeReportUpsert(item); });
+      saveActiveReport();
+      softRender();
+    }catch(e){ console.warn('Falha ao carregar relatório de ativos do Supabase:', e); }
+  }
+  function subscribeActiveReportRealtime(){
+    if(typeof supa==='undefined'||!supa) return;
+    supa.channel('cadastros-mantidos-ativos-changes')
+      .on('postgres_changes', {event:'*', schema:'public', table:'cadastros_mantidos_ativos'}, payload=>{
+        if(payload.eventType==='DELETE'){
+          const key = payload.old && payload.old.key; if(!key) return;
+          removeLocalActiveReport(key);
+        } else {
+          applyRemoteActiveReport(payload.new);
+        }
+        saveActiveReport(); softRender();
+      })
+      .subscribe(status=>{ if(typeof reportRealtimeStatus==='function') reportRealtimeStatus('cadastros_mantidos_ativos', status); });
+  }
   function reportKey(idx){return MAIN_SHEET+'|'+idx}
   function reportProductData(idx){
     const d=DATA[MAIN_SHEET],r=getRow(MAIN_SHEET,idx),find=re=>d.headers.findIndex(h=>re.test(String(h)));
@@ -322,8 +377,22 @@
       })
       .subscribe(status=>{ if(typeof reportRealtimeStatus==='function') reportRealtimeStatus('historico_validacao', status); });
   }
-  function addToActiveReport(idx,decision){const key=reportKey(idx),item=Object.assign({key,idx},reportProductData(idx),{decision:decision||'Validado – Manter Ativo',validatedAt:new Date().toISOString(),user:user()});const pos=activeReport.findIndex(x=>x.key===key);if(pos>=0)activeReport[pos]=item;else activeReport.unshift(item);saveActiveReport()}
-  function removeFromActiveReport(idx){for(let i=activeReport.length-1;i>=0;i--)if(activeReport[i].key===reportKey(idx))activeReport.splice(i,1);saveActiveReport()}
+  // nome de quem a tarefa estava atribuída no momento da validação — gravado no próprio
+  // registro do relatório pra nunca se perder, mesmo que a atribuição mude/seja desfeita depois.
+  function originAssignmentName(){
+    if(typeof assignments==='undefined'||typeof taskUserById!=='function')return null;
+    const sheet=originSheet,d=DATA[sheet];if(!d)return null;
+    const di=d.headers.findIndex(h=>/descric|descr|produto|nome/i.test(h));if(di<0)return null;
+    const target=String(description||'').trim().toUpperCase();if(!target)return null;
+    for(let i=0;i<rowCount(sheet);i++){
+      if(String(getRow(sheet,i)[di]||'').trim().toUpperCase()!==target)continue;
+      const info=assignments[sheet+'|'+i];
+      if(info){const u=taskUserById(info.responsavel);if(u)return u.nome}
+    }
+    return null;
+  }
+  function addToActiveReport(idx,decision,atribuidoPara){const key=reportKey(idx),existing=activeReport.find(x=>x.key===key),item=Object.assign({key,idx},reportProductData(idx),{decision:decision||'Validado – Manter Ativo',validatedAt:new Date().toISOString(),user:user(),atribuidoPara:atribuidoPara||(existing?existing.atribuidoPara:null)||null});const pos=activeReport.findIndex(x=>x.key===key);if(pos>=0)activeReport[pos]=item;else activeReport.unshift(item);saveActiveReport();activeReportUpsert(item)}
+  function removeFromActiveReport(idx){const key=reportKey(idx);for(let i=activeReport.length-1;i>=0;i--)if(activeReport[i].key===key)activeReport.splice(i,1);saveActiveReport();activeReportDelete(key)}
   window.syncAnalyticalValidation=function(sheet,idx,shouldValidate){
     const source=DATA[sheet],main=DATA[MAIN_SHEET];
     if(!source||!main)return 0;
@@ -349,11 +418,13 @@
       return 0;
     }
     if(shouldValidate){
+      const assignInfo=(typeof assignments!=='undefined')?assignments[sheet+'|'+idx]:null;
+      const atribuidoPara=assignInfo&&typeof taskUserById==='function'?(taskUserById(assignInfo.responsavel)||{}).nome||null:null;
       matches.forEach(i=>{
         validated.add(MAIN_SHEET+'|'+i);
         selectedForDeletion.delete(i);
         removeFromDeactivationReport(i);
-        addToActiveReport(i,'Validado – Manter Ativo pela aba '+(sheet==='NCM_Mesma_Descricao'?'NCM Mesma Descrição':'Descrições Duplicadas'));
+        addToActiveReport(i,'Validado – Manter Ativo pela aba '+(sheet==='NCM_Mesma_Descricao'?'NCM Mesma Descrição':'Descrições Duplicadas'),atribuidoPara);
         touchTimestamp(MAIN_SHEET+'|'+i);
         logValidationEvent(i,{sofreuAlteracao:false});
       });
@@ -378,7 +449,7 @@
     validated.add(MAIN_SHEET+'|'+idx);
     selectedForDeletion.delete(idx);
     removeFromDeactivationReport(idx);
-    addToActiveReport(idx,'Validado – Manter Ativo (principal)');
+    addToActiveReport(idx,'Validado – Manter Ativo (principal)',originAssignmentName());
     touchTimestamp(MAIN_SHEET+'|'+idx);
     logValidationEvent(idx,{sofreuAlteracao:false});
     persist();
@@ -391,7 +462,7 @@
     validated.add(MAIN_SHEET+'|'+idx);
     selectedForDeletion.delete(idx);
     removeFromDeactivationReport(idx);
-    addToActiveReport(idx,'Validado – Manter Ativo');
+    addToActiveReport(idx,'Validado – Manter Ativo',originAssignmentName());
     touchTimestamp(MAIN_SHEET+'|'+idx);
     logValidationEvent(idx,{sofreuAlteracao:false});
     persist();
@@ -539,10 +610,10 @@
     const rows=deactivationReport.map(x=>'<tr><td><span class="report-status '+(x.status==='Desativado'?'done':'selected')+'">'+escapeHtml(x.status)+'</span></td><td><b>'+escapeHtml(x.code)+'</b></td><td><b>'+escapeHtml(x.itemCode||'—')+'</b></td><td>'+escapeHtml(x.description)+'</td><td>'+escapeHtml(x.branch)+'</td><td>'+escapeHtml(x.ncm)+'</td><td>'+escapeHtml(x.type||'—')+'</td><td>'+escapeHtml(x.unit||'—')+'</td><td>'+escapeHtml(x.group||'—')+'</td><td>'+escapeHtml(x.createdAt||'Não informado')+'</td><td class="report-reason">'+escapeHtml(x.reason)+'</td><td>'+new Date(x.selectedAt).toLocaleString('pt-BR')+'</td><td>'+escapeHtml(x.user)+'</td><td>'+(x.completedAt?new Date(x.completedAt).toLocaleString('pt-BR'):'—')+'</td><td>'+undoReportButton(x,'deactivation')+'</td></tr>').join('');
     m.innerHTML='<div class="page-title"><div><div class="page-kicker">Governança cadastral</div><h2>Relatório de Desativação</h2><p>Cadastros separados durante a análise de duplicidades.</p></div></div><div class="review-stats"><div class="review-stat"><b>'+deactivationReport.length+'</b><span>Total no relatório</span></div><div class="review-stat"><b>'+selected+'</b><span>Aguardando desativação</span></div><div class="review-stat"><b>'+done+'</b><span>Desativados</span></div><div class="review-stat"><b>'+new Set(deactivationReport.map(x=>x.branch)).size+'</b><span>Filiais envolvidas</span></div></div><section class="panel"><div class="report-toolbar"><div><h2 style="margin-bottom:4px">Cadastros selecionados</h2><p>As informações ficam salvas no banco compartilhado e visíveis para todos os usuários.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn gray" onclick="runFilialDeactivationAutomation()" title="Separa (sem excluir) todos os produtos ativos das filiais 02 – Full Log, 03 – Tardane Logística e 07 – Verde Azul">⚙️ Separar filiais 02, 03 e 07</button><button class="btn" onclick="exportDeactivationReport()" '+(deactivationReport.length?'':'disabled')+'>⬇ Exportar CSV</button></div></div><div class="review-wrap"><table class="review-table"><thead><tr><th>Status</th><th>Código</th><th>Código do item</th><th>Descrição</th><th>Filial</th><th>NCM</th><th>Tipo</th><th>Unidade</th><th>Grupo</th><th>Data de criação</th><th>Motivo</th><th>Data da seleção</th><th>Usuário</th><th>Data da desativação</th><th>Ações</th></tr></thead><tbody>'+(rows||'<tr><td colspan="15" class="empty">Nenhum cadastro foi separado para desativação.</td></tr>')+'</tbody></table></div></section>';
   };
-  window.exportActiveReport=function(){const columns=['Código','Código do item','Descrição','Filial','NCM','Tipo','Unidade','Grupo','Data de criação','Decisão','Data da validação','Usuário'],quote=v=>'"'+String(v??'').replace(/"/g,'""')+'"',lines=[columns.map(quote).join(';')];activeReport.forEach(x=>lines.push([x.code,x.itemCode,x.description,x.branch,x.ncm,x.type,x.unit,x.group,x.createdAt,x.decision,new Date(x.validatedAt).toLocaleString('pt-BR'),x.user].map(quote).join(';')));const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='relatorio_cadastros_mantidos_ativos.csv';a.click();URL.revokeObjectURL(url)};
+  window.exportActiveReport=function(){const columns=['Código','Código do item','Descrição','Filial','NCM','Tipo','Unidade','Grupo','Data de criação','Decisão','Data da validação','Usuário','Atribuído a'],quote=v=>'"'+String(v??'').replace(/"/g,'""')+'"',lines=[columns.map(quote).join(';')];activeReport.forEach(x=>lines.push([x.code,x.itemCode,x.description,x.branch,x.ncm,x.type,x.unit,x.group,x.createdAt,x.decision,new Date(x.validatedAt).toLocaleString('pt-BR'),x.user,x.atribuidoPara||'—'].map(quote).join(';')));const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='relatorio_cadastros_mantidos_ativos.csv';a.click();URL.revokeObjectURL(url)};
   window.renderActiveReport=function(m){
-    const rows=activeReport.map(x=>'<tr><td><span class="report-status done">Validado – Manter Ativo</span></td><td><b>'+escapeHtml(x.code)+'</b></td><td><b>'+escapeHtml(x.itemCode||'—')+'</b></td><td>'+escapeHtml(x.description)+'</td><td>'+escapeHtml(x.branch)+'</td><td>'+escapeHtml(x.ncm)+'</td><td>'+escapeHtml(x.type||'—')+'</td><td>'+escapeHtml(x.unit||'—')+'</td><td>'+escapeHtml(x.group||'—')+'</td><td>'+escapeHtml(x.createdAt||'Não informado')+'</td><td>'+escapeHtml(x.decision)+'</td><td>'+new Date(x.validatedAt).toLocaleString('pt-BR')+'</td><td>'+escapeHtml(x.user)+'</td><td>'+undoReportButton(x,'active')+'</td></tr>').join('');
-    m.innerHTML='<div class="page-title"><div><div class="page-kicker">Governança cadastral</div><h2>Relatório de Cadastros Mantidos Ativos</h2><p>Produtos analisados e validados para permanecerem ativos.</p></div></div><div class="review-stats"><div class="review-stat"><b>'+activeReport.length+'</b><span>Cadastros validados</span></div><div class="review-stat"><b>'+new Set(activeReport.map(x=>x.description)).size+'</b><span>Produtos</span></div><div class="review-stat"><b>'+new Set(activeReport.map(x=>x.branch)).size+'</b><span>Filiais</span></div><div class="review-stat"><b>'+new Set(activeReport.map(x=>x.user)).size+'</b><span>Responsáveis</span></div></div><section class="panel"><div class="report-toolbar"><div><h2 style="margin-bottom:4px">Cadastros mantidos ativos</h2><p>As decisões permanecem armazenadas neste navegador.</p></div><button class="btn" onclick="exportActiveReport()" '+(activeReport.length?'':'disabled')+'>⬇ Exportar CSV</button></div><div class="review-wrap"><table class="review-table"><thead><tr><th>Situação</th><th>Código</th><th>Código do item</th><th>Descrição</th><th>Filial</th><th>NCM</th><th>Tipo</th><th>Unidade</th><th>Grupo</th><th>Data de criação</th><th>Decisão</th><th>Data da validação</th><th>Usuário</th><th>Ações</th></tr></thead><tbody>'+(rows||'<tr><td colspan="14" class="empty">Nenhum cadastro foi validado para permanecer ativo.</td></tr>')+'</tbody></table></div></section>';
+    const rows=activeReport.map(x=>'<tr><td><span class="report-status done">Validado – Manter Ativo</span></td><td><b>'+escapeHtml(x.code)+'</b></td><td><b>'+escapeHtml(x.itemCode||'—')+'</b></td><td>'+escapeHtml(x.description)+'</td><td>'+escapeHtml(x.branch)+'</td><td>'+escapeHtml(x.ncm)+'</td><td>'+escapeHtml(x.type||'—')+'</td><td>'+escapeHtml(x.unit||'—')+'</td><td>'+escapeHtml(x.group||'—')+'</td><td>'+escapeHtml(x.createdAt||'Não informado')+'</td><td>'+escapeHtml(x.decision)+'</td><td>'+new Date(x.validatedAt).toLocaleString('pt-BR')+'</td><td>'+escapeHtml(x.user)+'</td><td>'+escapeHtml(x.atribuidoPara||'—')+'</td><td>'+undoReportButton(x,'active')+'</td></tr>').join('');
+    m.innerHTML='<div class="page-title"><div><div class="page-kicker">Governança cadastral</div><h2>Relatório de Cadastros Mantidos Ativos</h2><p>Produtos analisados e validados para permanecerem ativos.</p></div></div><div class="review-stats"><div class="review-stat"><b>'+activeReport.length+'</b><span>Cadastros validados</span></div><div class="review-stat"><b>'+new Set(activeReport.map(x=>x.description)).size+'</b><span>Produtos</span></div><div class="review-stat"><b>'+new Set(activeReport.map(x=>x.branch)).size+'</b><span>Filiais</span></div><div class="review-stat"><b>'+new Set(activeReport.map(x=>x.user)).size+'</b><span>Responsáveis</span></div></div><section class="panel"><div class="report-toolbar"><div><h2 style="margin-bottom:4px">Cadastros mantidos ativos</h2><p>As informações ficam salvas no banco compartilhado e visíveis para todos os usuários.</p></div><button class="btn" onclick="exportActiveReport()" '+(activeReport.length?'':'disabled')+'>⬇ Exportar CSV</button></div><div class="review-wrap"><table class="review-table"><thead><tr><th>Situação</th><th>Código</th><th>Código do item</th><th>Descrição</th><th>Filial</th><th>NCM</th><th>Tipo</th><th>Unidade</th><th>Grupo</th><th>Data de criação</th><th>Decisão</th><th>Data da validação</th><th>Usuário</th><th>Atribuído a</th><th>Ações</th></tr></thead><tbody>'+(rows||'<tr><td colspan="15" class="empty">Nenhum cadastro foi validado para permanecer ativo.</td></tr>')+'</tbody></table></div></section>';
   };
 
   // ===== Relatório de Produtos Validados =====
@@ -704,4 +775,7 @@
   loadEditTrackingFromSupabase();
   subscribeEditTrackingRealtime();
   setInterval(loadEditTrackingFromSupabase, 8000);
+  loadActiveReportFromSupabase();
+  subscribeActiveReportRealtime();
+  setInterval(loadActiveReportFromSupabase, 8000);
 })();
