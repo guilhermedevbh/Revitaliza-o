@@ -230,3 +230,39 @@ alter publication supabase_realtime add table public.edicoes_pendentes;
 ```
 
 A partir dessa migração, os selos de status de cada edição (plataforma/Protheus) e o histórico de alterações usado no Relatório de Produtos Validados aparecem iguais para todos os usuários, em tempo real.
+
+## 12. Compartilhar o Relatório de Cadastros Mantidos Ativos entre usuários
+
+Até aqui, o "Relatório Mantidos Ativos" (produtos validados pra permanecer ativos) ficava salvo só no navegador de quem validou — por isso o nome de quem tinha validado, e de quem a tarefa estava atribuída no momento da validação, não apareciam pros outros usuários nem sobreviviam a uma troca de navegador. Rode no **SQL Editor**:
+
+```sql
+create table public.cadastros_mantidos_ativos (
+  key text primary key,
+  idx integer not null,
+  codigo text,
+  codigo_item text,
+  descricao text,
+  filial text,
+  ncm text,
+  tipo text,
+  unidade text,
+  grupo text,
+  criado_em_origem text,
+  decisao text,
+  validado_em timestamptz,
+  usuario text,
+  atribuido_para text,
+  atualizado_em timestamptz not null default now()
+);
+
+alter table public.cadastros_mantidos_ativos enable row level security;
+
+create policy "leitura publica" on public.cadastros_mantidos_ativos for select using (true);
+create policy "insercao publica" on public.cadastros_mantidos_ativos for insert with check (true);
+create policy "atualizacao publica" on public.cadastros_mantidos_ativos for update using (true);
+create policy "exclusao publica" on public.cadastros_mantidos_ativos for delete using (true);
+
+alter publication supabase_realtime add table public.cadastros_mantidos_ativos;
+```
+
+A partir dessa migração, o Relatório Mantidos Ativos (incluindo o campo "Atribuído a", preenchido automaticamente com quem a tarefa estava atribuída na hora da validação) fica visível e sincronizado para todos os usuários, em tempo real.
