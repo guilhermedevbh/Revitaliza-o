@@ -16,7 +16,9 @@ header{background:linear-gradient(135deg,var(--azul) 0%,var(--azul2) 70%,var(--v
 header img{height:54px;background:#fff;padding:6px 10px;border-radius:10px}
 header h1{font-size:22px;font-weight:700;letter-spacing:.3px}
 header p{font-size:13px;opacity:.85}
-nav{background:#fff;border-bottom:2px solid var(--bd);padding:0 28px;display:flex;gap:4px;overflow-x:auto;position:sticky;top:90px;z-index:40}
+nav{background:#fff;border-bottom:2px solid var(--bd);padding:0 28px;display:flex;align-items:stretch;gap:4px;position:sticky;top:90px;z-index:40}
+#navScroll{display:flex;gap:inherit;overflow-x:auto;flex:1;min-width:0}
+nav button[data-id="config"]{flex-shrink:0;border-left:1px solid var(--bd);margin-left:4px}
 nav button{background:none;border:none;padding:14px 20px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap;transition:.2s}
 nav button:hover{color:var(--azul);background:#f9fafe}
 nav button.active{color:var(--azul);border-bottom-color:var(--vermelho)}
@@ -237,7 +239,7 @@ try{
   <img id="logo" alt="Emtel"/>
   <div><h1>RevitaCad</h1><p>Revitalização inteligente de produtos e fornecedores</p></div><div class="header-meta"><input id="userNameInput" class="user-name-input" placeholder="👤 Seu nome" oninput="setReviewUserName(this.value)"><div class="status-chip" id="syncIndicator"><i></i> <span id="syncIndicatorText">Conectando...</span></div><button class="global-control" type="button" onclick="logoutAccessGate()" title="Sair do sistema">🚪 Sair</button></div>
 </header>
-<nav id="nav"></nav>
+<nav id="nav"><div id="navScroll"></div></nav>
 <main id="main"></main>
 
 <div class="modal" id="modal">
@@ -734,15 +736,16 @@ const TABS = [
 
 let current = 'resumo';
 const nav = document.getElementById('nav');
+const navScroll = document.getElementById('navScroll');
 TABS.forEach(t=>{
   const b = document.createElement('button');
   b.textContent = t.label;
   b.onclick = ()=>{ goTo(t.id); };
   b.dataset.id = t.id;
-  nav.appendChild(b);
+  navScroll.appendChild(b);
 });
 function activeBtn(){
-  [...nav.children].forEach(b=>b.classList.toggle('active', b.dataset.id===current));
+  [...nav.querySelectorAll('button')].forEach(b=>b.classList.toggle('active', b.dataset.id===current));
 }
 function goTo(id, opts){
   current = id;
@@ -2041,6 +2044,6 @@ setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exe
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
 </script>
 
-<script src="duplicidades-review.js?v=20261001-preservar-atribuicao-validada"></script>
+<script src="duplicidades-review.js?v=20261001-config-fixo-ultimo"></script>
 <script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
 </body></html>
