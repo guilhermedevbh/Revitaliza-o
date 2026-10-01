@@ -166,8 +166,6 @@ main{padding:28px 32px 42px;max-width:1680px}
 .page-title p{color:var(--muted);font-size:13px;margin-top:5px}
 .date-badge{padding:8px 12px;background:#fff;border:1px solid var(--bd);border-radius:9px;color:#52627a;font-size:12px;white-space:nowrap}
 .cards{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:20px}
-.cards-cols-5{grid-template-columns:repeat(5,minmax(0,1fr))}
-@media(max-width:1300px){.cards-cols-5{grid-template-columns:repeat(3,1fr)}}
 .card{min-height:166px;border:1px solid rgba(216,225,239,.9)!important;border-left:0!important;border-radius:16px;padding:21px 22px;box-shadow:var(--shadow);transition:transform .2s,box-shadow .2s}
 .card.clk:hover{transform:translateY(-3px);box-shadow:0 17px 34px rgba(15,38,76,.13)}
 .card:before{content:"";position:absolute;left:0;top:0;right:0;height:4px;background:var(--azul)}
@@ -205,7 +203,7 @@ header img#logo{width:176px;height:64px;min-width:176px;object-fit:contain;objec
 
 </style>
 <link rel="stylesheet" href="duplicidades-review.css">
-<link rel="stylesheet" href="dashboard-executivo.css?v=20261001-separados">
+<link rel="stylesheet" href="dashboard-executivo.css?v=20261001-remover-repetidos">
 <link rel="stylesheet" href="tema-relogio.css">
 <link rel="stylesheet" href="tema-contraste.css">
 </head>
@@ -2037,6 +2035,6 @@ setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exe
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
 </script>
 
-<script src="duplicidades-review.js?v=20261001-pend-sub-separados"></script>
+<script src="duplicidades-review.js?v=20261001-remover-repetidos"></script>
 <script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
 </body></html>
