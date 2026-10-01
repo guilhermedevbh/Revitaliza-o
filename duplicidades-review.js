@@ -158,6 +158,15 @@
     if(typeof supa==='undefined'||!supa) return;
     supa.from('desativacoes').delete().eq('key', key).then(({error})=>{ if(error) console.warn('Supabase delete (desativacoes) falhou:', error.message); });
   }
+  // upsert em lote (1 requisição por bloco de 300) — usado pela automação de
+  // separação por filial, que pode mexer em milhares de registros de uma vez.
+  function desativacaoUpsertBatch(items){
+    if(typeof supa==='undefined'||!supa||!items.length) return;
+    const rows=items.map(desativacaoRowFromItem),chunkSize=300;
+    for(let i=0;i<rows.length;i+=chunkSize){
+      supa.from('desativacoes').upsert(rows.slice(i,i+chunkSize)).then(({error})=>{ if(error) console.warn('Supabase upsert em lote (desativacoes) falhou:', error.message); });
+    }
+  }
   function applyRemoteDesativacao(row){
     const item={key:row.key, idx:row.idx, code:row.codigo, itemCode:row.codigo_item, description:row.descricao, branch:row.filial, ncm:row.ncm, type:row.tipo, unit:row.unidade, group:row.grupo, createdAt:row.criado_em_origem, reason:row.motivo, selectedAt:row.selecionado_em, user:row.usuario, status:row.status, completedAt:row.concluido_em};
     const pos=deactivationReport.findIndex(x=>x.key===row.key);
@@ -204,6 +213,57 @@
   }
   function addToDeactivationReport(idx,reason){const key=reportKey(idx),data=reportProductData(idx),existing=deactivationReport.find(x=>x.key===key&&x.status==='Selecionado');let item;if(existing){Object.assign(existing,data,{reason,selectedAt:new Date().toISOString(),user:user()});item=existing}else{item=Object.assign({key,idx},data,{reason,selectedAt:new Date().toISOString(),user:user(),status:'Selecionado'});deactivationReport.unshift(item)}saveDeactivationReport();desativacaoUpsert(item)}
   function removeFromDeactivationReport(idx){const key=reportKey(idx);for(let i=deactivationReport.length-1;i>=0;i--)if(deactivationReport[i].key===key&&deactivationReport[i].status==='Selecionado')deactivationReport.splice(i,1);saveDeactivationReport();desativacaoDelete(key)}
+  // ===== Automação: separar para desativação todos os produtos das filiais 02, 03 e 07 =====
+  // Não exclui nada — só marca "Separar para Desativação" e manda pro Relatório de
+  // Desativação, do mesmo jeito que o botão manual faz produto a produto. Roda em lote
+  // (upserts em blocos) porque pode envolver milhares de registros de uma vez.
+  const FILIAL_AUTOMATION_TARGETS=[{code:2,label:'02 – Full Log'},{code:3,label:'03 – Tardane Logística'},{code:7,label:'07 – Verde Azul'}];
+  window.runFilialDeactivationAutomation=function(){
+    const d=DATA[MAIN_SHEET];
+    if(!d){alert('Base de produtos não carregada.');return}
+    const h=d.headers,fi=h.findIndex(x=>/filial|loja|unidade/i.test(x));
+    if(fi<0){alert('Coluna de filial não encontrada na base.');return}
+    const targetCodes=new Set(FILIAL_AUTOMATION_TARGETS.map(b=>b.code));
+    const existingKeys=new Set(deactivationReport.map(x=>x.key));
+    const matches=[],countsByCode={};
+    for(let i=0;i<rowCount(MAIN_SHEET);i++){
+      if(!isActive(MAIN_SHEET,i))continue;
+      const key=reportKey(i);
+      if(existingKeys.has(key))continue; // já separado/desativado — evita duplicidade no relatório
+      const branchRaw=String(getRow(MAIN_SHEET,i)[fi]||'').trim();
+      const codeMatch=branchRaw.match(/^0*([0-9]+)/);
+      const code=codeMatch?Number(codeMatch[1]):null;
+      if(code===null||!targetCodes.has(code))continue;
+      matches.push(i);
+      countsByCode[code]=(countsByCode[code]||0)+1;
+    }
+    const resumo=FILIAL_AUTOMATION_TARGETS.map(b=>b.label+': '+(countsByCode[b.code]||0)).join('\n');
+    if(!matches.length){ toast('Nenhum produto novo encontrado nas filiais 02, 03 e 07 (os já separados/desativados não contam de novo).'); return; }
+    if(!confirm('Separar automaticamente '+matches.length.toLocaleString('pt-BR')+' produto(s) para o Relatório de Desativação?\n\n'+resumo+'\n\nOs produtos NÃO serão excluídos agora — ficam pendentes de análise e desativação manual.'))return;
+    const quem=requireUserAlways();
+    if(!quem)return;
+    const motivo='Produto pertencente à filial selecionada para desativação';
+    const now=new Date().toISOString();
+    const newItems=[];
+    matches.forEach(idx=>{
+      const key=reportKey(idx),data=reportProductData(idx),mainKey=MAIN_SHEET+'|'+idx;
+      validated.delete(mainKey);
+      removeFromActiveReport(idx);
+      selectedForDeletion.add(idx);
+      timestamps[mainKey]=now;
+      lastEditors[mainKey]=quem;
+      const item=Object.assign({key,idx},data,{reason:motivo,selectedAt:now,user:quem,status:'Selecionado'});
+      deactivationReport.unshift(item);
+      newItems.push(item);
+    });
+    saveDeactivationReport();
+    desativacaoUpsertBatch(newItems);
+    if(typeof window.supabaseUpsertBatch==='function') window.supabaseUpsertBatch(matches.map(i=>MAIN_SHEET+'|'+i));
+    if(typeof persist==='function') persist();
+    log('Separação automática por filial',matches[0],newItems.length+' produto(s) separados para desativação — '+resumo.replace(/\n/g,' · '));
+    toast(newItems.length.toLocaleString('pt-BR')+' produto(s) separado(s) para o Relatório de Desativação.');
+    if(typeof renderPreserveState==='function') renderPreserveState(); else render();
+  };
   // ===== Relatório de Produtos Validados: histórico de validações/alterações por produto =====
   // Cada evento é 1 linha: uma validação sem alteração (campoAlterado=null) ou 1 campo alterado
   // (campoAlterado/valorAnterior/valorNovo preenchidos). Vários campos alterados na mesma ação
@@ -476,7 +536,7 @@
   window.renderDeactivationReport=function(m){
     const selected=deactivationReport.filter(x=>x.status==='Selecionado').length,done=deactivationReport.filter(x=>x.status==='Desativado').length;
     const rows=deactivationReport.map(x=>'<tr><td><span class="report-status '+(x.status==='Desativado'?'done':'selected')+'">'+escapeHtml(x.status)+'</span></td><td><b>'+escapeHtml(x.code)+'</b></td><td><b>'+escapeHtml(x.itemCode||'—')+'</b></td><td>'+escapeHtml(x.description)+'</td><td>'+escapeHtml(x.branch)+'</td><td>'+escapeHtml(x.ncm)+'</td><td>'+escapeHtml(x.type||'—')+'</td><td>'+escapeHtml(x.unit||'—')+'</td><td>'+escapeHtml(x.group||'—')+'</td><td>'+escapeHtml(x.createdAt||'Não informado')+'</td><td class="report-reason">'+escapeHtml(x.reason)+'</td><td>'+new Date(x.selectedAt).toLocaleString('pt-BR')+'</td><td>'+escapeHtml(x.user)+'</td><td>'+(x.completedAt?new Date(x.completedAt).toLocaleString('pt-BR'):'—')+'</td><td>'+undoReportButton(x,'deactivation')+'</td></tr>').join('');
-    m.innerHTML='<div class="page-title"><div><div class="page-kicker">Governança cadastral</div><h2>Relatório de Desativação</h2><p>Cadastros separados durante a análise de duplicidades.</p></div></div><div class="review-stats"><div class="review-stat"><b>'+deactivationReport.length+'</b><span>Total no relatório</span></div><div class="review-stat"><b>'+selected+'</b><span>Aguardando desativação</span></div><div class="review-stat"><b>'+done+'</b><span>Desativados</span></div><div class="review-stat"><b>'+new Set(deactivationReport.map(x=>x.branch)).size+'</b><span>Filiais envolvidas</span></div></div><section class="panel"><div class="report-toolbar"><div><h2 style="margin-bottom:4px">Cadastros selecionados</h2><p>As informações ficam salvas no banco compartilhado e visíveis para todos os usuários.</p></div><button class="btn" onclick="exportDeactivationReport()" '+(deactivationReport.length?'':'disabled')+'>⬇ Exportar CSV</button></div><div class="review-wrap"><table class="review-table"><thead><tr><th>Status</th><th>Código</th><th>Código do item</th><th>Descrição</th><th>Filial</th><th>NCM</th><th>Tipo</th><th>Unidade</th><th>Grupo</th><th>Data de criação</th><th>Motivo</th><th>Data da seleção</th><th>Usuário</th><th>Data da desativação</th><th>Ações</th></tr></thead><tbody>'+(rows||'<tr><td colspan="15" class="empty">Nenhum cadastro foi separado para desativação.</td></tr>')+'</tbody></table></div></section>';
+    m.innerHTML='<div class="page-title"><div><div class="page-kicker">Governança cadastral</div><h2>Relatório de Desativação</h2><p>Cadastros separados durante a análise de duplicidades.</p></div></div><div class="review-stats"><div class="review-stat"><b>'+deactivationReport.length+'</b><span>Total no relatório</span></div><div class="review-stat"><b>'+selected+'</b><span>Aguardando desativação</span></div><div class="review-stat"><b>'+done+'</b><span>Desativados</span></div><div class="review-stat"><b>'+new Set(deactivationReport.map(x=>x.branch)).size+'</b><span>Filiais envolvidas</span></div></div><section class="panel"><div class="report-toolbar"><div><h2 style="margin-bottom:4px">Cadastros selecionados</h2><p>As informações ficam salvas no banco compartilhado e visíveis para todos os usuários.</p></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn gray" onclick="runFilialDeactivationAutomation()" title="Separa (sem excluir) todos os produtos ativos das filiais 02 – Full Log, 03 – Tardane Logística e 07 – Verde Azul">⚙️ Separar filiais 02, 03 e 07</button><button class="btn" onclick="exportDeactivationReport()" '+(deactivationReport.length?'':'disabled')+'>⬇ Exportar CSV</button></div></div><div class="review-wrap"><table class="review-table"><thead><tr><th>Status</th><th>Código</th><th>Código do item</th><th>Descrição</th><th>Filial</th><th>NCM</th><th>Tipo</th><th>Unidade</th><th>Grupo</th><th>Data de criação</th><th>Motivo</th><th>Data da seleção</th><th>Usuário</th><th>Data da desativação</th><th>Ações</th></tr></thead><tbody>'+(rows||'<tr><td colspan="15" class="empty">Nenhum cadastro foi separado para desativação.</td></tr>')+'</tbody></table></div></section>';
   };
   window.exportActiveReport=function(){const columns=['Código','Código do item','Descrição','Filial','NCM','Tipo','Unidade','Grupo','Data de criação','Decisão','Data da validação','Usuário'],quote=v=>'"'+String(v??'').replace(/"/g,'""')+'"',lines=[columns.map(quote).join(';')];activeReport.forEach(x=>lines.push([x.code,x.itemCode,x.description,x.branch,x.ncm,x.type,x.unit,x.group,x.createdAt,x.decision,new Date(x.validatedAt).toLocaleString('pt-BR'),x.user].map(quote).join(';')));const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='relatorio_cadastros_mantidos_ativos.csv';a.click();URL.revokeObjectURL(url)};
   window.renderActiveReport=function(m){
