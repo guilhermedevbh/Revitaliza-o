@@ -166,14 +166,16 @@ main{padding:28px 32px 42px;max-width:1680px}
 .page-title p{color:var(--muted);font-size:13px;margin-top:5px}
 .date-badge{padding:8px 12px;background:#fff;border:1px solid var(--bd);border-radius:9px;color:#52627a;font-size:12px;white-space:nowrap}
 .cards{grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:20px}
+.cards-cols-5{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media(max-width:1300px){.cards-cols-5{grid-template-columns:repeat(3,1fr)}}
 .card{min-height:166px;border:1px solid rgba(216,225,239,.9)!important;border-left:0!important;border-radius:16px;padding:21px 22px;box-shadow:var(--shadow);transition:transform .2s,box-shadow .2s}
 .card.clk:hover{transform:translateY(-3px);box-shadow:0 17px 34px rgba(15,38,76,.13)}
 .card:before{content:"";position:absolute;left:0;top:0;right:0;height:4px;background:var(--azul)}
-.card:nth-child(2):before{background:var(--vermelho)}.card:nth-child(3):before{background:var(--verde)}.card:nth-child(4):before{background:var(--ambar)}
+.card:nth-child(2):before{background:var(--vermelho)}.card:nth-child(3):before{background:var(--verde)}.card:nth-child(4):before{background:var(--ambar)}.card:nth-child(5):before{background:#8a5a00}
 .card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
 .card h3{font-size:11px;letter-spacing:1.1px;margin:0;color:#63728a}
 .metric-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--azul3);color:var(--azul);font-size:16px}
-.card:nth-child(2) .metric-icon{background:#fff0f3;color:var(--vermelho)}.card:nth-child(3) .metric-icon{background:#eafaf5;color:var(--verde)}.card:nth-child(4) .metric-icon{background:#fff7e7;color:var(--ambar)}
+.card:nth-child(2) .metric-icon{background:#fff0f3;color:var(--vermelho)}.card:nth-child(3) .metric-icon{background:#eafaf5;color:var(--verde)}.card:nth-child(4) .metric-icon{background:#fff7e7;color:var(--ambar)}.card:nth-child(5) .metric-icon{background:#f5eee0;color:#8a5a00}
 .card .v{font-size:34px;letter-spacing:-1px;color:var(--txt);line-height:1}.card .d{font-size:12px;margin-top:12px;color:#718096;line-height:1.4}
 .metric-foot{display:flex;align-items:center;gap:7px}.metric-dot{width:7px;height:7px;border-radius:50%;background:currentColor}
 .diamond{display:none}
@@ -852,13 +854,17 @@ function renderPreserveState(){
 function renderResumo(m){
   const st=computeStats(MAIN_SHEET), pct=st.total?Math.round(st.val*100/st.total):0;
   const now=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+  const totalBase=rowCount(MAIN_SHEET), desativados=Math.max(0,totalBase-st.total);
+  const separados=(typeof window.selectedForDeletion!=='undefined')?window.selectedForDeletion.size:0;
+  const pendAjustado=Math.max(0,st.pend-separados);
   m.innerHTML=`
     <div class="page-title"><div><div class="page-kicker">Visão executiva</div><h2>Panorama da base cadastral</h2><p>Indicadores consolidados para acompanhamento da revitalização.</p></div><div class="date-badge">Atualizado em ${now}</div></div>
-    <div class="cards">
-      <div class="card clk" onclick="goTo('${MAIN_SHEET}')"><div class="card-top"><h3>Total de produtos</h3><span class="metric-icon">▦</span></div><div class="v">${st.total.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> Base ativa consolidada</div></div>
-      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyDup:true})"><div class="card-top"><h3>Produtos repetidos</h3><span class="metric-icon">⧉</span></div><div class="v">${st.dup.toLocaleString('pt-BR')}</div></div>
-      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyValidated:true})"><div class="card-top"><h3>Itens validados</h3><span class="metric-icon">✓</span></div><div class="v">${st.val.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--verde)"></i> ${pct}% do escopo concluído</div></div>
-      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})"><div class="card-top"><h3>Pendentes de validação</h3><span class="metric-icon">◷</span></div><div class="v">${st.pend.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--ambar)"></i> Próxima frente de atuação</div></div>
+    <div class="cards cards-cols-5">
+      <div class="card clk" onclick="goTo('${MAIN_SHEET}')"><div class="card-top"><h3>Total na base</h3><span class="metric-icon">🗂️</span></div><div class="v">${totalBase.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> ${desativados.toLocaleString('pt-BR')} desativado(s)</div></div>
+      <div class="card clk" onclick="goTo('${MAIN_SHEET}')"><div class="card-top"><h3>Produtos ativos</h3><span class="metric-icon">▦</span></div><div class="v">${st.total.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> Base consolidada</div></div>
+      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyValidated:true})"><div class="card-top"><h3>Validados</h3><span class="metric-icon">✓</span></div><div class="v">${st.val.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--verde)"></i> ${pct}% concluído</div></div>
+      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})"><div class="card-top"><h3>Pendentes</h3><span class="metric-icon">◷</span></div><div class="v">${pendAjustado.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--ambar)"></i> Aguardando análise</div></div>
+      <div class="card clk" onclick="goTo('deactivationReport')"><div class="card-top"><h3>Separados p/ desativação</h3><span class="metric-icon">🗃️</span></div><div class="v">${separados.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:#8a5a00"></i> No Relatório de Desativação</div></div>
     </div>
     <div class="exec-grid">
       <section class="panel hero-panel"><div class="hero-copy"><div class="page-kicker">Programa de qualidade cadastral</div><h2>Decisões mais rápidas começam com dados confiáveis</h2><p>Centralize a análise, priorize duplicidades e acompanhe a validação da base em tempo real. Os indicadores são recalculados automaticamente a cada atualização.</p><div class="hero-actions"><button class="quick-btn primary" onclick="goTo('dashboard')">Abrir dashboard</button><button class="quick-btn" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})">Revisar pendências</button></div></div><div class="progress-ring" style="--p:${pct}"><div><strong>${pct}%</strong><span>concluído</span></div></div></section>
@@ -2035,6 +2041,6 @@ setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exe
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
 </script>
 
-<script src="duplicidades-review.js?v=20261001-remover-repetidos"></script>
+<script src="duplicidades-review.js?v=20261001-resumo-cards-dashboard"></script>
 <script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
 </body></html>
