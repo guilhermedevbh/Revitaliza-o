@@ -389,6 +389,12 @@ function supabaseUpsert(key){
 
 function applyRemoteRow(row){
   const key = row.key;
+  // se a mudança local é mais recente que a desta linha vinda do Supabase, ignora — evita
+  // que uma consulta (poll de 8s ou Realtime) que só chegou atrasada desfaça uma validação
+  // que acabou de ser feita aqui mesmo, fazendo o produto "voltar" pra pendente sozinho.
+  const localTs = timestamps[key] ? new Date(timestamps[key]).getTime() : 0;
+  const remoteTs = row.atualizado_em ? new Date(row.atualizado_em).getTime() : 0;
+  if(localTs && localTs > remoteTs) return;
   if(row.excluido) deletes.add(key); else deletes.delete(key);
   if(row.validado) validated.add(key); else validated.delete(key);
   if(row.edicao) edits[key] = row.edicao; else delete edits[key];
