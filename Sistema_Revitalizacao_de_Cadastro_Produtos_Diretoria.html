@@ -1210,9 +1210,16 @@ Regras obrigatórias:
 Nunca inclua texto, markdown ou comentários fora do objeto JSON.`;
 function geminiApiKey(){ return (localStorage.getItem('emtel_gemini_key')||'').trim(); }
 function setGeminiApiKey(v){ localStorage.setItem('emtel_gemini_key', (v||'').trim()); }
-// só a descrição/nome do produto — pedido mais enxuto = resposta mais rápida da IA
-function iaBuildUserPrompt(descricao){
-  return 'Classifique o NCM do produto a seguir, a partir só do nome/descrição, e responda no formato JSON definido nas instruções do sistema.\n\nProduto: '+(String(descricao||'').trim()||'(não informado)');
+// pedido enxuto (nome/descrição + NCM já cadastrado, se houver) = resposta mais rápida da IA.
+// Busca por NCM quando ele já está preenchido (mais direto/rápido que só a descrição);
+// cai pra busca por descrição quando o NCM está vazio.
+function iaBuildUserPrompt(descricao, ncmCadastrado){
+  const desc = String(descricao||'').trim()||'(não informado)';
+  const ncm = String(ncmCadastrado||'').trim();
+  const instrucaoBusca = ncm
+    ? 'Confirme/pesquise no Google pelo NCM '+ncm+' (verifique se esse código corresponde ao produto abaixo; se não corresponder, pesquise o NCM correto pela descrição).'
+    : 'O produto não tem NCM cadastrado — pesquise no Google o NCM correto a partir da descrição abaixo.';
+  return 'Classifique o NCM do produto a seguir e responda no formato JSON definido nas instruções do sistema.\n\n'+instrucaoBusca+'\n\nProduto: '+desc+(ncm?('\nNCM cadastrado: '+ncm):'');
 }
 let iaCtx = null;
 const iaHistory = JSON.parse(localStorage.getItem('emtel_ia_history')||'[]');
@@ -1336,44 +1343,41 @@ async function iaAnalyze(){
   let step=0;
   const stepTimer = setInterval(()=>{ if(step<liList.length){ liList[step].classList.add('done'); step++; } }, 220);
   const {descricao: nomeProduto} = iaProductLabel(sheet, idx);
-  const sleep = ms => new Promise(r=>setTimeout(r, ms));
+  const ncmIdxForPrompt = iaNcmIdx(sheet);
+  const ncmCadastradoForPrompt = ncmIdxForPrompt>=0 ? String(getRow(sheet, idx)[ncmIdxForPrompt]??'').trim() : '';
   const loadingMsg = document.querySelector('.ia-loading b');
   // sem responseMimeType:'application/json' de propósito — esse modo "estruturado" parece
   // ficar sobrecarregado com mais frequência; já extraímos o JSON da resposta por regex.
-  // Pedido enxuto (só o nome/descrição do produto) = resposta mais rápida da IA.
+  // Pedido enxuto (nome/descrição + NCM já cadastrado) = resposta mais rápida da IA.
   // tools: google_search deixa a IA pesquisar no Google antes de responder, em vez de usar
   // só o conhecimento geral do modelo — pedido explícito: "busca no google o correto".
   const requestBody = JSON.stringify({
     system_instruction: { parts: [{ text: GEMINI_SYSTEM_PROMPT }] },
-    contents: [{ role:'user', parts: [{ text: iaBuildUserPrompt(nomeProduto) }] }],
+    contents: [{ role:'user', parts: [{ text: iaBuildUserPrompt(nomeProduto, ncmCadastradoForPrompt) }] }],
     tools: [{ google_search: {} }],
     generationConfig: { maxOutputTokens: 800 }
   });
   let res, rawText, networkFailed = false;
-  // tenta cada modelo da lista (com repetição em 503/overload) antes de desistir — se um
-  // modelo estiver sobrecarregado ou tiver sido descontinuado, cai pro próximo automaticamente.
+  // 1 tentativa por modelo (sem espera de retentativa) — com busca no Google habilitada,
+  // cada chamada já é mais lenta; se um modelo estiver sobrecarregado, pula pro próximo
+  // imediatamente em vez de esperar e tentar de novo no mesmo modelo.
   modelLoop:
   for(const model of GEMINI_MODELS){
-    const maxAttempts = 2, backoffs = [0, 1200];
-    for(let attempt=0; attempt<maxAttempts; attempt++){
-      if(attempt>0 && loadingMsg) loadingMsg.textContent = 'Servidor da IA ocupado, tentando de novo ('+(GEMINI_MODELS.indexOf(model)+1)+'/'+GEMINI_MODELS.length+')...';
-      else if(GEMINI_MODELS.indexOf(model)>0 && loadingMsg) loadingMsg.textContent = 'Tentando modelo alternativo da IA ('+(GEMINI_MODELS.indexOf(model)+1)+'/'+GEMINI_MODELS.length+')...';
-      if(attempt>0) await sleep(backoffs[attempt]);
-      try{
-        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-          method:'POST',
-          headers:{'content-type':'application/json','x-goog-api-key':apiKey},
-          body: requestBody
-        });
-      }catch(networkErr){
-        networkFailed = true;
-        console.warn('IA analyze: falha de rede', networkErr);
-        break modelLoop;
-      }
-      networkFailed = false;
-      if(res.status===503 || res.status===404) continue; // tenta de novo / próximo modelo
+    if(GEMINI_MODELS.indexOf(model)>0 && loadingMsg) loadingMsg.textContent = 'Tentando modelo alternativo da IA ('+(GEMINI_MODELS.indexOf(model)+1)+'/'+GEMINI_MODELS.length+')...';
+    try{
+      res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method:'POST',
+        headers:{'content-type':'application/json','x-goog-api-key':apiKey},
+        body: requestBody
+      });
+    }catch(networkErr){
+      networkFailed = true;
+      console.warn('IA analyze: falha de rede', networkErr);
       break modelLoop;
     }
+    networkFailed = false;
+    if(res.status===503 || res.status===404) continue; // próximo modelo
+    break modelLoop;
   }
   clearInterval(stepTimer);
   if(networkFailed || !res){
