@@ -503,7 +503,7 @@
     toast('Separação desfeita e cadastro removido do relatório.');
   };
   window.deleteSelectedReview=function(){const chosen=[...selectedForDeletion].filter(i=>isActive(MAIN_SHEET,i));if(!chosen.length)return;if(!requireUser())return;const principals=principalsByBranch(indices()),blocked=chosen.filter(i=>principals.has(i)&&!validated.has(MAIN_SHEET+'|'+i));if(blocked.length){alert('Existem cadastros principais selecionados que ainda não foram validados. Valide-os antes da exclusão.');return}if(!confirm('Confirma a exclusão de '+chosen.length+' registro(s) separado(s)? A ação será registrada no histórico.'))return;const touched=[];chosen.forEach(idx=>{const d=DATA[MAIN_SHEET],r=getRow(MAIN_SHEET,idx),ci=d.headers.findIndex(h=>/^codigo$|^código$/i.test(h));log('Exclusão de registro separado',idx,'Código '+r[ci]+' excluído após triagem');deletes.add(MAIN_SHEET+'|'+idx);touchTimestamp(MAIN_SHEET+'|'+idx);const item=deactivationReport.find(x=>x.key===reportKey(idx)&&x.status==='Selecionado');if(item){item.status='Desativado';item.completedAt=new Date().toISOString();touched.push(item)}});saveDeactivationReport();touched.forEach(desativacaoUpsert);selectedForDeletion.clear();persist();render();toast('Registros selecionados excluídos e registrados no relatório.')};
-  function installEditTracking(){const body=document.getElementById('mBody');if(!body||editContext===null)return;body.querySelectorAll('[data-i]').forEach(input=>{input.addEventListener('input',()=>{const changed=String(input.value)!==String(editOriginalRow[+input.dataset.i]??'');input.closest('.fld').classList.toggle('field-changed',changed)})});const box=document.createElement('section');box.className='edit-tracking';box.innerHTML='<h4>Rastreabilidade da alteração</h4><p>Os campos modificados serão identificados automaticamente. Marque o Protheus somente depois de confirmar que a atualização também foi realizada no ERP.</p><div class="edit-tracking-options"><label class="edit-status-option"><input type="checkbox" id="editPlatformStatus" checked disabled> Alterado na plataforma</label><label class="edit-status-option"><input type="checkbox" id="editProtheusStatus"> Atualizado no Protheus</label></div>';body.appendChild(box)}
+  function installEditTracking(){const body=document.getElementById('mBody');if(!body||editContext===null)return;body.querySelectorAll('[data-i]').forEach(input=>{input.addEventListener('input',()=>{const changed=String(input.value)!==String(editOriginalRow[+input.dataset.i]??'');input.closest('.fld').classList.toggle('field-changed',changed)})});const box=document.createElement('section');box.className='edit-tracking';box.innerHTML='<h4>Rastreabilidade da alteração</h4><p>Os campos modificados serão identificados automaticamente. Marque o Protheus somente depois de confirmar que a atualização também foi realizada no ERP.</p><div class="edit-tracking-options"><label class="edit-status-option"><input type="checkbox" id="editPlatformStatus" checked disabled> Alterado na plataforma</label><label class="edit-status-option"><input type="checkbox" id="editProtheusStatus"> Atualizado no Protheus</label></div><button type="button" class="btn gray" style="margin-top:12px;width:100%" onclick="openValidationHistoryModal(\''+reportKey(editContext)+'\')">🕑 Ver histórico completo deste produto</button>';body.appendChild(box)}
   window.editReviewRecord=function(idx){if(!requireUser())return;const d=DATA[MAIN_SHEET],r=getRow(MAIN_SHEET,idx),ci=d.headers.findIndex(h=>/^codigo$|^código$/i.test(h)),fi=d.headers.findIndex(h=>/filial/i.test(h));if(!confirm('Deseja alterar o cadastro '+r[ci]+' da Filial '+r[fi]+'?'))return;editContext=idx;editOriginalRow=[...r];openModal(MAIN_SHEET,idx);installEditTracking()};
   window.deleteReviewRecord=function(idx){if(!requireUser())return;const list=indices(),principals=principalsByBranch(list),d=DATA[MAIN_SHEET],r=getRow(MAIN_SHEET,idx),ci=d.headers.findIndex(h=>/^codigo$|^código$/i.test(h)),fi=d.headers.findIndex(h=>/filial/i.test(h));if(principals.has(idx)&&!validated.has(MAIN_SHEET+'|'+idx)){alert('Valide o cadastro principal desta filial antes de excluí-lo.');return}if(!confirm('Confirma a exclusão do cadastro '+r[ci]+' da Filial '+r[fi]+'?'))return;log('Exclusão de registro',idx,'Código '+r[ci]+' excluído');deletes.add(MAIN_SHEET+'|'+idx);touchTimestamp(MAIN_SHEET+'|'+idx);persist();render();toast('Registro excluído e histórico atualizado.')};
 
@@ -727,7 +727,14 @@
       +'</section>';
   };
   window.openValidationHistoryModal=function(produtoKey){
-    const rows=computeValidatedReportRows(),p=rows.find(r=>r.produtoKey===produtoKey);
+    const rows=computeValidatedReportRows();
+    let p=rows.find(r=>r.produtoKey===produtoKey);
+    if(!p){
+      // produto sem evento em validationHistory/editTracking ainda (nunca editado nem
+      // validado) — mostra o modal vazio em vez de simplesmente não abrir nada.
+      const idx=Number(String(produtoKey).split('|')[1]),data=Number.isInteger(idx)?reportProductData(idx):null;
+      p=data?{produtoKey,codigo:data.code,descricao:data.description,filial:data.branch,ncm:data.ncm,status:'Pendente',eventosOrdenados:[]}:{produtoKey,codigo:'—',descricao:'—',filial:'—',ncm:'—',status:'—',eventosOrdenados:[]};
+    }
     let overlay=document.getElementById('validationHistoryOverlay');
     if(!overlay){
       overlay=document.createElement('div');
@@ -736,7 +743,6 @@
       overlay.onclick=function(e){if(e.target===overlay)closeValidationHistoryModal()};
       document.body.appendChild(overlay);
     }
-    if(!p){overlay.innerHTML='';overlay.style.display='none';return}
     const eventos=[...p.eventosOrdenados].reverse();
     const eventoHtml=e=>'<div class="history-row"><b>'+escapeHtml(e.usuario||'Anônimo')+'</b><span>'
       +(e.sofreuAlteracao?('Alteração de campo: <b>'+escapeHtml(e.campoAlterado||'—')+'</b><br>'+escapeHtml(e.valorAnterior||'—')+' → '+escapeHtml(e.valorNovo||'—')):'Validado sem alteração')
