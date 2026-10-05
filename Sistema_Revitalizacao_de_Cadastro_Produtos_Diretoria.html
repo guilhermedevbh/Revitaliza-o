@@ -89,12 +89,15 @@ tbody tr.edited{background:var(--amarelo)!important}
 .ia-ncm-box{border-radius:10px;padding:10px 12px;text-align:center}
 .ia-ncm-box-red{background:#fee;border:1px solid #fca5a5}
 .ia-ncm-box-green{background:#d1fae5;border:1px solid #6ee7b7}
+.ia-ncm-box-blue{background:#e5efff;border:1px solid #93b4e8}
 .ia-ncm-box-label{font-size:10px;text-transform:uppercase;letter-spacing:.03em;display:block;margin-bottom:4px}
 .ia-ncm-box-red .ia-ncm-box-label{color:#b91c1c}
 .ia-ncm-box-green .ia-ncm-box-label{color:#047857}
+.ia-ncm-box-blue .ia-ncm-box-label{color:#174ea6}
 .ia-ncm-box-code{font-size:16px;font-weight:800}
 .ia-ncm-box-red .ia-ncm-box-code{color:#b91c1c}
 .ia-ncm-box-green .ia-ncm-box-code{color:#047857}
+.ia-ncm-box-blue .ia-ncm-box-code{color:#174ea6}
 .ia-suggestion-head{display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px}
 .ia-just{color:var(--muted);font-size:12px}
 .ia-alert{font-size:13px;padding:4px 0;display:flex;gap:6px;align-items:flex-start}
@@ -1180,9 +1183,10 @@ Sua função é AUDITAR o cadastro de um produto e apontar problemas de descriç
 
 Regras obrigatórias:
 - A DESCRIÇÃO do produto é a principal base para classificar o NCM: leia com atenção o que o produto realmente é (material, função, aplicação) a partir da descrição, e use os demais campos (tipo, grupo, unidade etc.) só como apoio.
+- Você tem acesso à busca do Google: use-a para conferir/confirmar o NCM correto do produto (tabela NCM/TIPI, sites oficiais como Receita Federal/Siscomex, fontes especializadas em classificação fiscal) antes de responder, em vez de responder só de memória.
 - Sempre aponte em "ncm_sugerido" pelo menos 1 código de NCM que você recomendaria com base na descrição — mesmo que o NCM atual do cadastro já pareça correto, informe-o ali como a opção recomendada. Só devolva lista vazia se a descrição for curta/genérica demais (ex.: "PRODUTO", "DIVERSOS") a ponto de não dar para chutar nem uma categoria ampla.
-- Nunca invente vigência, extinção ou alteração oficial de NCM: você não tem acesso a uma base fiscal oficial atualizada nesta análise. Diga isso claramente no campo "fontes".
-- Baseie suas sugestões de NCM no seu conhecimento geral da tabela NCM/TIPI e no raciocínio sobre a descrição e demais campos do produto, mas deixe claro que é uma sugestão que REQUER VALIDAÇÃO por um responsável fiscal.
+- Nunca invente vigência, extinção ou alteração oficial de NCM sem ter encontrado isso na busca. Se não conseguir pesquisar ou a busca não trouxer confirmação clara, diga isso no campo "fontes" e baseie-se no seu conhecimento geral da tabela NCM/TIPI.
+- Mesmo usando a busca, deixe claro que é uma sugestão que REQUER VALIDAÇÃO por um responsável fiscal antes de aplicar — você pode errar ou encontrar fontes desatualizadas.
 - Se as informações do produto forem insuficientes para uma classificação segura, diga isso explicitamente no campo "justificativa" e reduza a "confianca", mas ainda assim tente indicar o NCM mais provável.
 - "confianca" é sua estimativa de 0 a 100 de quão bem a descrição/dados sustentam a classificação sugerida — nunca invente um número preciso sem justificativa coerente.
 - Responda ESTRITAMENTE em JSON válido, sem nenhum texto fora do JSON, seguindo exatamente este formato:
@@ -1199,7 +1203,7 @@ Regras obrigatórias:
     {"nivel": "verde|amarelo|vermelho", "texto": "..."}
   ],
   "recomendacoes": "...",
-  "fontes": "explicação curta de que a sugestão usa conhecimento geral do modelo sobre a tabela NCM/TIPI, sem confirmação em base fiscal oficial atualizada nesta análise; oriente validação com um responsável fiscal antes de aplicar."
+  "fontes": "explicação curta de onde veio a confirmação (busca no Google, site oficial, etc.) ou, se não encontrou nada específico, que a sugestão usa conhecimento geral sobre a tabela NCM/TIPI; sempre oriente validação com um responsável fiscal antes de aplicar."
 }
 
 "ncm_sugerido" deve ter no máximo 3 itens, ordenados do mais para o menos aderente. Se o NCM atual já parecer correto, pode devolver uma lista vazia.
@@ -1249,18 +1253,24 @@ function iaResultHtml(a, ncmCadastrado){
   const sugestoes = Array.isArray(a.ncm_sugerido)?a.ncm_sugerido:[];
   const alertas = Array.isArray(a.alertas)?a.alertas:[];
   const top = sugestoes[0];
-  const houveMudanca = top && top.codigo && ncmCadastrado && String(top.codigo).trim()!==String(ncmCadastrado).trim();
+  const ncmCorreto = top && top.codigo && ncmCadastrado && String(top.codigo).trim()===String(ncmCadastrado).trim();
+  const houveMudanca = top && top.codigo && ncmCadastrado && !ncmCorreto;
   return `
+    ${ncmCorreto ? `
+    <div class="ia-ncm-box ia-ncm-box-green" style="margin-bottom:10px">
+      <span class="ia-ncm-box-label">✅ NCM cadastrado está correto</span>
+      <div class="ia-ncm-box-code">${escapeHtml(ncmCadastrado)}</div>
+    </div>` : `
     <div class="ia-ncm-compare">
       <div class="ia-ncm-box ia-ncm-box-red">
         <span class="ia-ncm-box-label">🔴 NCM cadastrado hoje</span>
         <div class="ia-ncm-box-code">${escapeHtml(ncmCadastrado||'—')}</div>
       </div>
-      <div class="ia-ncm-box ia-ncm-box-green">
-        <span class="ia-ncm-box-label">🟢 NCM correto a usar</span>
+      <div class="ia-ncm-box ia-ncm-box-blue">
+        <span class="ia-ncm-box-label">🔵 NCM correto a usar</span>
         <div class="ia-ncm-box-code">${top?escapeHtml(top.codigo||'—'):'—'}</div>
       </div>
-    </div>
+    </div>`}
     ${top?`<div class="ia-ncm-recommend">
       <span class="ia-ncm-recommend-label">📌 ${houveMudanca?'NCM recomendado (diferente do atual)':'NCM recomendado — igual ao cadastrado'}</span>
       <div class="ia-ncm-recommend-code">${escapeHtml(top.codigo||'—')}</div>
@@ -1331,9 +1341,12 @@ async function iaAnalyze(){
   // sem responseMimeType:'application/json' de propósito — esse modo "estruturado" parece
   // ficar sobrecarregado com mais frequência; já extraímos o JSON da resposta por regex.
   // Pedido enxuto (só o nome/descrição do produto) = resposta mais rápida da IA.
+  // tools: google_search deixa a IA pesquisar no Google antes de responder, em vez de usar
+  // só o conhecimento geral do modelo — pedido explícito: "busca no google o correto".
   const requestBody = JSON.stringify({
     system_instruction: { parts: [{ text: GEMINI_SYSTEM_PROMPT }] },
     contents: [{ role:'user', parts: [{ text: iaBuildUserPrompt(nomeProduto) }] }],
+    tools: [{ google_search: {} }],
     generationConfig: { maxOutputTokens: 800 }
   });
   let res, rawText, networkFailed = false;
