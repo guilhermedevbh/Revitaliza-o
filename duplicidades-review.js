@@ -787,18 +787,4 @@
   loadActiveReportFromSupabase();
   subscribeActiveReportRealtime();
   setInterval(loadActiveReportFromSupabase, 8000);
-  // botão "Tentar reconectar" do painel de depuração: remove todos os canais Realtime
-  // (inclusive os do script principal, que já são globais) e assina de novo do zero —
-  // útil quando a conexão falhou só na carga da página (rede instável/oscilação).
-  window.retryAllRealtimeConnections = function(){
-    if(typeof supa!=='undefined' && supa && typeof supa.removeAllChannels==='function') supa.removeAllChannels();
-    if(typeof window.resetRealtimeIndicator==='function') window.resetRealtimeIndicator();
-    if(typeof subscribeSupabaseRealtime==='function') subscribeSupabaseRealtime();
-    if(typeof subscribeAssignmentsRealtime==='function') subscribeAssignmentsRealtime();
-    subscribeDesativacaoRealtime();
-    subscribeHistoricoRealtime();
-    subscribeValidationHistoryRealtime();
-    subscribeEditTrackingRealtime();
-    subscribeActiveReportRealtime();
-  };
 })();
