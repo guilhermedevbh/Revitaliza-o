@@ -266,3 +266,31 @@ alter publication supabase_realtime add table public.cadastros_mantidos_ativos;
 ```
 
 A partir dessa migração, o Relatório Mantidos Ativos (incluindo o campo "Atribuído a", preenchido automaticamente com quem a tarefa estava atribuída na hora da validação) fica visível e sincronizado para todos os usuários, em tempo real.
+
+## 13. Conserto rápido: indicador preso em "🟠 Reconectando..."
+
+O selo no topo do site ("🟢 Sincronizado em tempo real" / "🟠 Reconectando...") só fica verde quando **todas** as tabelas abaixo estão inscritas na publicação `supabase_realtime`. Se uma única tabela ficou de fora (por ter sido criada antes da respectiva seção deste README, ou por algum passo pulado), o selo fica preso em "Reconectando..." para sempre, mesmo com o resto do site funcionando normalmente — passe o mouse sobre o selo para ver qual tabela está faltando.
+
+Em vez de conferir seção por seção, rode este script uma vez no **SQL Editor**: ele adiciona à publicação só as tabelas que ainda não estão lá (pode rodar quantas vezes quiser, não dá erro se já estiverem todas incluídas):
+
+```sql
+do $$
+declare
+  tabela text;
+begin
+  foreach tabela in array array[
+    'validacoes', 'atribuicoes', 'desativacoes', 'historico_acoes',
+    'historico_validacao_produtos', 'edicoes_pendentes', 'cadastros_mantidos_ativos'
+  ]
+  loop
+    if not exists (
+      select 1 from pg_publication_tables
+      where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = tabela
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', tabela);
+    end if;
+  end loop;
+end $$;
+```
+
+Se alguma dessas tabelas ainda não existir no seu banco (porque a seção correspondente nunca foi rodada), o script dá erro nela — nesse caso, rode primeiro a seção deste README que cria a tabela faltante e rode o script de novo.
