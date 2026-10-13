@@ -266,3 +266,27 @@ alter publication supabase_realtime add table public.cadastros_mantidos_ativos;
 ```
 
 A partir dessa migração, o Relatório Mantidos Ativos (incluindo o campo "Atribuído a", preenchido automaticamente com quem a tarefa estava atribuída na hora da validação) fica visível e sincronizado para todos os usuários, em tempo real.
+
+## 14. Compartilhar produtos importados (planilha) entre usuários
+
+Até aqui, ao usar o botão "⬆ Importar Produtos" (planilha Excel), os produtos novos ficavam salvos **só no navegador de quem importou** (um banco local chamado IndexedDB) — por isso números como "Total na base" apareciam diferentes para cada usuário. Rode no **SQL Editor**:
+
+```sql
+create table public.produtos_importados (
+  id bigint generated always as identity primary key,
+  sheet text not null,
+  linha jsonb not null,
+  usuario text,
+  arquivo text,
+  criado_em timestamptz not null default now()
+);
+
+alter table public.produtos_importados enable row level security;
+
+create policy "leitura publica" on public.produtos_importados for select using (true);
+create policy "insercao publica" on public.produtos_importados for insert with check (true);
+
+alter publication supabase_realtime add table public.produtos_importados;
+```
+
+A partir dessa migração, qualquer planilha importada por um usuário aparece automaticamente para todos os outros, em tempo real — sem precisar reimportar em cada navegador. Produtos importados **antes** desta migração (só salvos localmente) são enviados automaticamente ao banco compartilhado na primeira vez que o navegador de quem os importou abrir o site depois desta atualização.

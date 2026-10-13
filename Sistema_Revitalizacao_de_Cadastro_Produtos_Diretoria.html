@@ -645,6 +645,66 @@ let pendingImportApproval = null;
 function openImportedDB(){return new Promise((resolve,reject)=>{const req=indexedDB.open('EmtelCadastroProdutos',1);req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains('imports'))db.createObjectStore('imports')};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});}
 async function loadImportedFromDB(){try{const db=await openImportedDB(),tx=db.transaction('imports','readonly'),store=tx.objectStore('imports'),req=store.get('products');const saved=await new Promise((resolve,reject)=>{req.onsuccess=()=>resolve(req.result||{});req.onerror=()=>reject(req.error)});Object.keys(saved).forEach(sheet=>{imported[sheet]=saved[sheet]});const legacy=localStorage.getItem('emtel_imported');if(legacy&&Object.keys(saved).length===0){const old=JSON.parse(legacy);Object.keys(old).forEach(sheet=>{imported[sheet]=old[sheet]});await saveImportedToDB()}if(legacy)localStorage.removeItem('emtel_imported');importedStorageReady=true;render();}catch(err){console.error('Falha ao carregar produtos importados:',err);importedStorageReady=true;}}
 async function saveImportedToDB(){const db=await openImportedDB(),tx=db.transaction('imports','readwrite'),store=tx.objectStore('imports');store.put(imported,'products');await new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)});}
+// ===== Compartilhar produtos importados (planilha) entre usuários via Supabase =====
+// antes disso, uma planilha importada só ficava salva no navegador de quem importou
+// (IndexedDB), por isso "Total na base" e outros números divergiam entre usuários.
+const importedPendingLocal = {}; // sheet -> qtd de linhas inseridas por este navegador ainda não "confirmadas" pelo Realtime (evita duplicar ao ouvir o próprio insert)
+async function fetchAllImportedRows(){
+  const pageSize = 1000;
+  let from = 0, all = [];
+  for(;;){
+    const { data, error } = await supa.from('produtos_importados').select('*').order('id').range(from, from+pageSize-1);
+    if(error) throw error;
+    if(!data || !data.length) break;
+    all = all.concat(data);
+    if(data.length < pageSize) break;
+    from += pageSize;
+  }
+  return all;
+}
+async function saveImportedToSupabase(sheet, rows, fileName){
+  if(!supa || !rows || !rows.length) return;
+  const quem = reviewUserName() || 'Anônimo';
+  const payload = rows.map(linha=>({ sheet, linha, usuario: quem, arquivo: fileName||null }));
+  const chunkSize = 300;
+  for(let i=0;i<payload.length;i+=chunkSize){
+    supa.from('produtos_importados').insert(payload.slice(i,i+chunkSize)).then(({error})=>{ if(error) console.warn('Falha ao sincronizar produtos importados:', error.message); });
+  }
+}
+async function loadImportedFromSupabase(){
+  if(!supa) return;
+  try{
+    const rows = await fetchAllImportedRows();
+    const bySheet = {};
+    rows.forEach(r=>{ (bySheet[r.sheet] = bySheet[r.sheet]||[]).push(r.linha); });
+    // migra, uma única vez, importações antigas que ficaram só neste navegador (de antes
+    // desta sincronização existir) — só se o banco ainda não tiver nada pra essa aba.
+    Object.keys(imported).forEach(sheet=>{
+      const remoteCount = (bySheet[sheet]||[]).length;
+      if(remoteCount===0 && imported[sheet] && imported[sheet].length){
+        saveImportedToSupabase(sheet, imported[sheet], 'Migração automática (importação local anterior)');
+        bySheet[sheet] = imported[sheet];
+      }
+    });
+    Object.keys(bySheet).forEach(sheet=>{ imported[sheet] = bySheet[sheet]; });
+    importedStorageReady = true;
+    saveImportedToDB().catch(()=>{});
+    if(typeof scheduleBackgroundRender==='function') scheduleBackgroundRender(); else render();
+  }catch(e){ console.warn('Falha ao carregar produtos importados do Supabase:', e); }
+}
+function subscribeImportedRealtime(){
+  if(!supa) return;
+  supa.channel('produtos-importados-changes')
+    .on('postgres_changes', {event:'INSERT', schema:'public', table:'produtos_importados'}, payload=>{
+      const row = payload.new; if(!row) return;
+      if(importedPendingLocal[row.sheet] > 0){ importedPendingLocal[row.sheet]--; return; }
+      if(!imported[row.sheet]) imported[row.sheet]=[];
+      imported[row.sheet].push(row.linha);
+      saveImportedToDB().catch(()=>{});
+      if(typeof scheduleBackgroundRender==='function') scheduleBackgroundRender(); else render();
+    })
+    .subscribe(status=>reportRealtimeStatus('produtos-importados', status));
+}
 function persist(){
   const store=(key,value)=>{
     if(typeof window.safeEmtelStore==='function')return window.safeEmtelStore(key,value);
@@ -1625,11 +1685,13 @@ async function approvePendingImport(){
   for(const row of pending.rows)imported[pending.sheet].push(row);
   try{
     await saveImportedToDB();
+    importedPendingLocal[pending.sheet]=(importedPendingLocal[pending.sheet]||0)+pending.rows.length;
+    saveImportedToSupabase(pending.sheet, pending.rows, pending.report.arquivo);
     persist();
     pendingImportApproval=null;
     const modal=document.getElementById('importAnalysisModal');if(modal)modal.remove();
     goTo(pending.sheet);
-    alert(pending.rows.length+' produto(s) novo(s) aprovado(s) e adicionado(s) ao painel. Os produtos já cadastrados foram ignorados.');
+    alert(pending.rows.length+' produto(s) novo(s) aprovado(s) e adicionado(s) ao painel, visível para todos os usuários. Os produtos já cadastrados foram ignorados.');
   }catch(err){
     imported[pending.sheet].splice(start);
     console.error('Falha ao armazenar produtos:',err);
@@ -2062,14 +2124,17 @@ protheusEnsureTimer();
 backfillValidatedNames();
 updateSyncIndicator();
 render();
-loadImportedFromDB();
 loadStateFromSupabase();
 subscribeSupabaseRealtime();
 loadAssignmentsFromSupabase();
 subscribeAssignmentsRealtime();
+// espera carregar o cache local (IndexedDB) antes de comparar com o Supabase, pra não
+// achar (por engano) que não há nada a migrar de importações antigas feitas só aqui.
+loadImportedFromDB().finally(()=>{ loadImportedFromSupabase(); subscribeImportedRealtime(); });
 // reforço: revalida com o banco periodicamente, caso o Realtime não entregue algum evento
 setInterval(loadStateFromSupabase, 8000);
 setInterval(loadAssignmentsFromSupabase, 8000);
+setInterval(loadImportedFromSupabase, 8000);
 // auto-refresh do dashboard em tempo real
 setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exec-updated');if(el)el.textContent='Atualizado em '+new Date().toLocaleString('pt-BR');}},15000);
 // auto-refresh da aba Protheus (status visual em tempo real)
