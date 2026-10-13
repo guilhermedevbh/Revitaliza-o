@@ -271,7 +271,7 @@ A partir dessa migração, o Relatório Mantidos Ativos (incluindo o campo "Atri
 
 O selo no topo do site ("🟢 Sincronizado em tempo real" / "🟠 Reconectando...") só fica verde quando **todas** as tabelas abaixo estão inscritas na publicação `supabase_realtime`. Se uma única tabela ficou de fora (por ter sido criada antes da respectiva seção deste README, ou por algum passo pulado), o selo fica preso em "Reconectando..." para sempre, mesmo com o resto do site funcionando normalmente — passe o mouse sobre o selo para ver qual tabela está faltando.
 
-Em vez de conferir seção por seção, rode este script uma vez no **SQL Editor**: ele adiciona à publicação só as tabelas que ainda não estão lá (pode rodar quantas vezes quiser, não dá erro se já estiverem todas incluídas):
+Em vez de conferir seção por seção, rode este script uma vez no **SQL Editor**: ele adiciona à publicação só as tabelas que ainda não estão lá, e **pula (sem dar erro)** qualquer tabela que ainda não existir no seu banco — nesse caso aparece um aviso dizendo qual seção deste README rodar pra criá-la. Pode rodar quantas vezes quiser.
 
 ```sql
 do $$
@@ -283,6 +283,10 @@ begin
     'historico_validacao_produtos', 'edicoes_pendentes', 'cadastros_mantidos_ativos'
   ]
   loop
+    if not exists (select 1 from information_schema.tables where table_schema='public' and table_name=tabela) then
+      raise notice 'Tabela % ainda não existe — rode a seção deste README que cria essa tabela antes de incluí-la no tempo real.', tabela;
+      continue;
+    end if;
     if not exists (
       select 1 from pg_publication_tables
       where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = tabela
@@ -293,4 +297,4 @@ begin
 end $$;
 ```
 
-Se alguma dessas tabelas ainda não existir no seu banco (porque a seção correspondente nunca foi rodada), o script dá erro nela — nesse caso, rode primeiro a seção deste README que cria a tabela faltante e rode o script de novo.
+Os avisos ("NOTICE") aparecem na aba **Messages**/**Logs** do SQL Editor, não na de "Results" — se o script rodar sem erro mas sem mudar nada, confira ali quais tabelas foram puladas.
