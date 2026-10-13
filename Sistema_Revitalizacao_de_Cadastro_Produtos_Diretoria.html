@@ -363,14 +363,28 @@ const realtimeChannelStatus = {};
 // (a cada 8s). Depois de um tempo de espera razoável, assume que não vai responder e mostra
 // um status estável em vez de ficar alarmando o usuário indefinidamente.
 let realtimeWatchdogFired = false;
-setTimeout(()=>{
-  realtimeWatchdogFired = true;
-  REALTIME_CHANNEL_NAMES.forEach(n=>{
-    if(!(n in realtimeChannelRawStatus)){ realtimeChannelRawStatus[n] = 'SEM RESPOSTA (rede bloqueando WebSocket?)'; realtimeChannelStatus[n] = false; }
-  });
+let realtimeWatchdogTimer = null;
+function armRealtimeWatchdog(){
+  if(realtimeWatchdogTimer) clearTimeout(realtimeWatchdogTimer);
+  realtimeWatchdogTimer = setTimeout(()=>{
+    realtimeWatchdogFired = true;
+    REALTIME_CHANNEL_NAMES.forEach(n=>{
+      if(!(n in realtimeChannelRawStatus)){ realtimeChannelRawStatus[n] = 'SEM RESPOSTA (rede bloqueando WebSocket?)'; realtimeChannelStatus[n] = false; }
+    });
+    updateSyncIndicator();
+    if(document.getElementById('syncDebugOverlay')) renderSyncDebugPanel();
+  }, 12000);
+}
+armRealtimeWatchdog();
+// usado pelo botão "Tentar reconectar" do painel de depuração: zera o status de todos os
+// canais e rearma o watchdog, pra dar uma nova chance limpa de conectar via Realtime.
+window.resetRealtimeIndicator = function(){
+  realtimeWatchdogFired = false;
+  REALTIME_CHANNEL_NAMES.forEach(n=>{ delete realtimeChannelRawStatus[n]; delete realtimeChannelStatus[n]; });
+  armRealtimeWatchdog();
   updateSyncIndicator();
   if(document.getElementById('syncDebugOverlay')) renderSyncDebugPanel();
-}, 12000);
+};
 function reportRealtimeStatus(name, status){
   realtimeChannelRawStatus[name] = status;
   realtimeChannelStatus[name] = (status === 'SUBSCRIBED');
@@ -426,6 +440,7 @@ function renderSyncDebugPanel(){
     +'<p style="color:var(--muted);font-size:12px;margin-bottom:10px">Cada linha é uma tabela do banco. "SUBSCRIBED" = conectado. Qualquer outro valor (ex.: CHANNEL_ERROR, TIMED_OUT) indica que essa tabela não está na publicação <code>supabase_realtime</code> — rode a seção 13 do README no SQL Editor do Supabase para corrigir todas de uma vez.</p>'
     +rowsHtml
     +'<p style="color:var(--muted);font-size:11px;margin-top:12px">Dados ainda aparecem normalmente mesmo com algum canal aqui em laranja — a atualização entre usuários só fica mais lenta (polling a cada 8s) nessa tabela específica, em vez de instantânea.</p>'
+    +'<button class="btn" style="width:100%;margin-top:10px" onclick="(typeof retryAllRealtimeConnections===\'function\')?retryAllRealtimeConnections():null">🔄 Tentar reconectar</button>'
     +'</div>';
   overlay.style.display = 'flex';
 }
@@ -2128,6 +2143,6 @@ setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exe
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
 </script>
 
-<script src="duplicidades-review.js?v=20261005-historico-no-modal-edicao"></script>
+<script src="duplicidades-review.js?v=20261013-retry-realtime"></script>
 <script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
 </body></html>
