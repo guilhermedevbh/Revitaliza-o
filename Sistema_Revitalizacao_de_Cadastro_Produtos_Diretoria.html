@@ -240,7 +240,7 @@ try{
 </script>
 <header>
   <img id="logo" alt="Emtel"/>
-  <div><h1>RevitaCad</h1><p>Revitalização inteligente de produtos e fornecedores</p></div><div class="header-meta"><input id="userNameInput" class="user-name-input" placeholder="👤 Seu nome" oninput="setReviewUserName(this.value)"><div class="status-chip" id="syncIndicator"><i></i> <span id="syncIndicatorText">Conectando...</span></div><button class="global-control" type="button" onclick="logoutAccessGate()" title="Sair do sistema">🚪 Sair</button></div>
+  <div><h1>RevitaCad</h1><p>Revitalização inteligente de produtos e fornecedores</p></div><div class="header-meta"><input id="userNameInput" class="user-name-input" placeholder="👤 Seu nome" oninput="setReviewUserName(this.value)"><div class="status-chip" id="syncIndicator" onclick="renderSyncDebugPanel()" style="cursor:pointer" title="Clique para ver detalhes"><i></i> <span id="syncIndicatorText">Conectando...</span></div><button class="global-control" type="button" onclick="logoutAccessGate()" title="Sair do sistema">🚪 Sair</button></div>
 </header>
 <nav id="nav"><div id="navScroll"></div></nav>
 <main id="main"></main>
@@ -351,8 +351,12 @@ window.fetchAllRows = fetchAllRows;
 // ===== Indicador visual de sincronização em tempo real (🟢 sincronizado / 🟠 reconectando) =====
 // reflete o status de inscrição de cada canal Realtime usado no site, para deixar visível
 // quando a atualização automática entre usuários está funcionando ou tentando reconectar.
+// guarda o status BRUTO de cada canal (não só sim/não) — precisa pra mostrar o motivo real
+// (CHANNEL_ERROR, TIMED_OUT, CLOSED...) no painel de depuração, em vez de só "não conectou".
+const realtimeChannelRawStatus = {};
 const realtimeChannelStatus = {};
 function reportRealtimeStatus(name, status){
+  realtimeChannelRawStatus[name] = status;
   realtimeChannelStatus[name] = (status === 'SUBSCRIBED');
   // ajuda a diagnosticar: se um canal nunca inscreve (status diferente de SUBSCRIBED), o
   // indicador global fica preso em "Reconectando..." para sempre — geralmente porque a
@@ -360,6 +364,7 @@ function reportRealtimeStatus(name, status){
   // do README da Edge Function, que reúne todas as tabelas num script só).
   if(status!=='SUBSCRIBED') console.warn('Canal Realtime "'+name+'" não inscrito (status: '+status+'). Verifique se a tabela está em supabase_realtime — veja a seção 13 do README.');
   updateSyncIndicator();
+  if(document.getElementById('syncDebugOverlay')) renderSyncDebugPanel(); // atualiza o painel se já estiver aberto
 }
 function updateSyncIndicator(){
   const el = document.getElementById('syncIndicator');
@@ -375,9 +380,38 @@ function updateSyncIndicator(){
   else {
     el.classList.add('sync-down'); txt.textContent = '🟠 Reconectando...';
     const presos = names.filter(n=>!realtimeChannelStatus[n]);
-    el.title = presos.length ? 'Canal(is) sem conexão em tempo real: '+presos.join(', ')+'. Verifique a seção 13 do README (tabelas na publicação supabase_realtime).' : '';
+    el.title = presos.length ? 'Clique para ver detalhes — canal(is) sem conexão: '+presos.join(', ') : 'Clique para ver detalhes';
   }
 }
+// painel de depuração: clicar no selo mostra o status bruto de cada canal, pra identificar
+// exatamente qual tabela falta na publicação supabase_realtime sem precisar abrir o console.
+function renderSyncDebugPanel(){
+  let overlay = document.getElementById('syncDebugOverlay');
+  if(!overlay){
+    overlay = document.createElement('div');
+    overlay.id = 'syncDebugOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9997;background:rgba(15,23,42,.55);display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.onclick = function(e){ if(e.target===overlay) closeSyncDebugPanel(); };
+    document.body.appendChild(overlay);
+  }
+  const names = ['validacoes-changes','atribuicoes-changes','desativacoes-changes','historico-changes','historico-validacao-changes','edicoes-pendentes-changes','cadastros-mantidos-ativos-changes'];
+  const rowsHtml = names.map(n=>{
+    const raw = realtimeChannelRawStatus[n] || 'aguardando...';
+    const ok = raw === 'SUBSCRIBED';
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #edf1f7;font-size:12px">'
+      +'<span>'+(ok?'🟢':'🟠')+' '+escapeHtml(n)+'</span>'
+      +'<b style="color:'+(ok?'#047857':'#b45309')+'">'+escapeHtml(raw)+'</b>'
+      +'</div>';
+  }).join('');
+  overlay.innerHTML = '<div class="box" style="max-width:520px;width:100%;max-height:80vh;overflow:auto;background:#fff;border-radius:14px;padding:20px" onclick="event.stopPropagation()">'
+    +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px"><h3 style="margin:0">Status da sincronização em tempo real</h3><button class="ia-close" onclick="closeSyncDebugPanel()">✕</button></div>'
+    +'<p style="color:var(--muted);font-size:12px;margin-bottom:10px">Cada linha é uma tabela do banco. "SUBSCRIBED" = conectado. Qualquer outro valor (ex.: CHANNEL_ERROR, TIMED_OUT) indica que essa tabela não está na publicação <code>supabase_realtime</code> — rode a seção 13 do README no SQL Editor do Supabase para corrigir todas de uma vez.</p>'
+    +rowsHtml
+    +'<p style="color:var(--muted);font-size:11px;margin-top:12px">Dados ainda aparecem normalmente mesmo com algum canal aqui em laranja — a atualização entre usuários só fica mais lenta (polling a cada 8s) nessa tabela específica, em vez de instantânea.</p>'
+    +'</div>';
+  overlay.style.display = 'flex';
+}
+function closeSyncDebugPanel(){ const overlay = document.getElementById('syncDebugOverlay'); if(overlay){ overlay.style.display='none'; overlay.innerHTML=''; } }
 if(typeof window!=='undefined'){
   window.addEventListener('online', updateSyncIndicator);
   window.addEventListener('offline', updateSyncIndicator);
