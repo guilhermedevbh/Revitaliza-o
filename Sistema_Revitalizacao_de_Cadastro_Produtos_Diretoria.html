@@ -353,8 +353,24 @@ window.fetchAllRows = fetchAllRows;
 // quando a atualização automática entre usuários está funcionando ou tentando reconectar.
 // guarda o status BRUTO de cada canal (não só sim/não) — precisa pra mostrar o motivo real
 // (CHANNEL_ERROR, TIMED_OUT, CLOSED...) no painel de depuração, em vez de só "não conectou".
+const REALTIME_CHANNEL_NAMES = ['validacoes-changes','atribuicoes-changes','desativacoes-changes','historico-changes','historico-validacao-changes','edicoes-pendentes-changes','cadastros-mantidos-ativos-changes'];
 const realtimeChannelRawStatus = {};
 const realtimeChannelStatus = {};
+// se um canal nunca chega a chamar reportRealtimeStatus (nem erro, nem sucesso), o navegador
+// provavelmente está bloqueando a conexão WebSocket (wss://) usada pelo Realtime — comum em
+// redes corporativas/proxy que liberam HTTPS normal mas barram WebSocket. Nesse caso a tela
+// ficaria presa em "Reconectando..." para sempre mesmo com o site funcionando via polling
+// (a cada 8s). Depois de um tempo de espera razoável, assume que não vai responder e mostra
+// um status estável em vez de ficar alarmando o usuário indefinidamente.
+let realtimeWatchdogFired = false;
+setTimeout(()=>{
+  realtimeWatchdogFired = true;
+  REALTIME_CHANNEL_NAMES.forEach(n=>{
+    if(!(n in realtimeChannelRawStatus)){ realtimeChannelRawStatus[n] = 'SEM RESPOSTA (rede bloqueando WebSocket?)'; realtimeChannelStatus[n] = false; }
+  });
+  updateSyncIndicator();
+  if(document.getElementById('syncDebugOverlay')) renderSyncDebugPanel();
+}, 12000);
 function reportRealtimeStatus(name, status){
   realtimeChannelRawStatus[name] = status;
   realtimeChannelStatus[name] = (status === 'SUBSCRIBED');
@@ -378,9 +394,12 @@ function updateSyncIndicator(){
   const allUp = names.length>0 && names.every(n=>realtimeChannelStatus[n]);
   if(allUp){ el.classList.remove('sync-down'); txt.textContent = '🟢 Sincronizado em tempo real'; el.removeAttribute('title'); }
   else {
-    el.classList.add('sync-down'); txt.textContent = '🟠 Reconectando...';
+    el.classList.add('sync-down');
+    // depois do tempo de espera do watchdog, troca o alarme permanente por um status estável:
+    // o site continua funcionando (busca os dados a cada 8s), só sem a atualização instantânea.
+    txt.textContent = realtimeWatchdogFired ? '🟡 Atualizando a cada 8s' : '🟠 Reconectando...';
     const presos = names.filter(n=>!realtimeChannelStatus[n]);
-    el.title = presos.length ? 'Clique para ver detalhes — canal(is) sem conexão: '+presos.join(', ') : 'Clique para ver detalhes';
+    el.title = (presos.length ? 'Canal(is) sem tempo real: '+presos.join(', ')+'. ' : '') + (realtimeWatchdogFired ? 'Os dados continuam atualizando normalmente, só não instantaneamente. Clique para detalhes.' : 'Clique para ver detalhes');
   }
 }
 // painel de depuração: clicar no selo mostra o status bruto de cada canal, pra identificar
@@ -394,8 +413,7 @@ function renderSyncDebugPanel(){
     overlay.onclick = function(e){ if(e.target===overlay) closeSyncDebugPanel(); };
     document.body.appendChild(overlay);
   }
-  const names = ['validacoes-changes','atribuicoes-changes','desativacoes-changes','historico-changes','historico-validacao-changes','edicoes-pendentes-changes','cadastros-mantidos-ativos-changes'];
-  const rowsHtml = names.map(n=>{
+  const rowsHtml = REALTIME_CHANNEL_NAMES.map(n=>{
     const raw = realtimeChannelRawStatus[n] || 'aguardando...';
     const ok = raw === 'SUBSCRIBED';
     return '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #edf1f7;font-size:12px">'
