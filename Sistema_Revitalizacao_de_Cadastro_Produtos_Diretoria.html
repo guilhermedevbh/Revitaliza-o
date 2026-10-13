@@ -354,6 +354,11 @@ window.fetchAllRows = fetchAllRows;
 const realtimeChannelStatus = {};
 function reportRealtimeStatus(name, status){
   realtimeChannelStatus[name] = (status === 'SUBSCRIBED');
+  // ajuda a diagnosticar: se um canal nunca inscreve (status diferente de SUBSCRIBED), o
+  // indicador global fica preso em "Reconectando..." para sempre — geralmente porque a
+  // tabela correspondente não foi incluída na publicação supabase_realtime (ver seção 13
+  // do README da Edge Function, que reúne todas as tabelas num script só).
+  if(status!=='SUBSCRIBED') console.warn('Canal Realtime "'+name+'" não inscrito (status: '+status+'). Verifique se a tabela está em supabase_realtime — veja a seção 13 do README.');
   updateSyncIndicator();
 }
 function updateSyncIndicator(){
@@ -366,8 +371,12 @@ function updateSyncIndicator(){
   }
   const names = Object.keys(realtimeChannelStatus);
   const allUp = names.length>0 && names.every(n=>realtimeChannelStatus[n]);
-  if(allUp){ el.classList.remove('sync-down'); txt.textContent = '🟢 Sincronizado em tempo real'; }
-  else { el.classList.add('sync-down'); txt.textContent = '🟠 Reconectando...'; }
+  if(allUp){ el.classList.remove('sync-down'); txt.textContent = '🟢 Sincronizado em tempo real'; el.removeAttribute('title'); }
+  else {
+    el.classList.add('sync-down'); txt.textContent = '🟠 Reconectando...';
+    const presos = names.filter(n=>!realtimeChannelStatus[n]);
+    el.title = presos.length ? 'Canal(is) sem conexão em tempo real: '+presos.join(', ')+'. Verifique a seção 13 do README (tabelas na publicação supabase_realtime).' : '';
+  }
 }
 if(typeof window!=='undefined'){
   window.addEventListener('online', updateSyncIndicator);
