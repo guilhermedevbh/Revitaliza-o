@@ -307,6 +307,7 @@
       removeFromActiveReport(idx);
       selectedForDeletion.add(idx);
       timestamps[mainKey]=now;
+      if(typeof recentLocalChanges==='object'&&recentLocalChanges) recentLocalChanges[mainKey]=Date.now();
       lastEditors[mainKey]=quem;
       const item=Object.assign({key,idx},data,{reason:motivo,selectedAt:now,user:quem,status:'Selecionado'});
       deactivationReport.unshift(item);

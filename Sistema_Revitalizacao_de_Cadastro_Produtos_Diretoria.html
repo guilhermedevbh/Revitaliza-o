@@ -322,6 +322,11 @@ const validated = new Set(JSON.parse(localStorage.getItem('emtel_val')||'[]'));
 const timestamps = JSON.parse(localStorage.getItem('emtel_ts')||'{}');
 // quem fez a última alteração de cada registro
 const lastEditors = JSON.parse(localStorage.getItem('emtel_editors')||'{}');
+// guarda (só na memória deste dispositivo, nunca comparado com o relógio de outro aparelho)
+// o instante local em que cada registro foi alterado por aqui, pra proteger por alguns
+// segundos contra um poll/Realtime atrasado desfazer uma validação que acabou de ser feita.
+const recentLocalChanges = {};
+const RECENT_LOCAL_CHANGE_MS = 15000;
 
 // ===== Supabase: banco de dados compartilhado das validações/edições/exclusões =====
 const SUPABASE_URL = 'https://chgiayjwhhkyjaykguyv.supabase.co';
@@ -465,12 +470,14 @@ function supabaseUpsert(key){
 
 function applyRemoteRow(row){
   const key = row.key;
-  // se a mudança local é mais recente que a desta linha vinda do Supabase, ignora — evita
-  // que uma consulta (poll de 8s ou Realtime) que só chegou atrasada desfaça uma validação
-  // que acabou de ser feita aqui mesmo, fazendo o produto "voltar" pra pendente sozinho.
-  const localTs = timestamps[key] ? new Date(timestamps[key]).getTime() : 0;
-  const remoteTs = row.atualizado_em ? new Date(row.atualizado_em).getTime() : 0;
-  if(localTs && localTs > remoteTs) return;
+  // se alteramos esse registro por aqui há pouco tempo (poucos segundos, só neste
+  // dispositivo), ignora essa atualização — evita que um poll/Realtime atrasado desfaça
+  // uma validação que acabou de ser feita, fazendo o produto "voltar" pra pendente sozinho.
+  // Importante: isso NUNCA compara o relógio deste aparelho com o de outro (o que causaria
+  // divergência permanente entre usuários se algum relógio estivesse errado) — é só uma
+  // janela curta e local medida pelo próprio relógio deste dispositivo.
+  const recentLocal = recentLocalChanges[key];
+  if(recentLocal && (Date.now() - recentLocal) < RECENT_LOCAL_CHANGE_MS) return;
   if(row.excluido) deletes.add(key); else deletes.delete(key);
   if(row.validado) validated.add(key); else validated.delete(key);
   if(row.edicao) edits[key] = row.edicao; else delete edits[key];
@@ -486,6 +493,7 @@ function backfillValidatedNames(){
     if(!lastEditors[key]){
       lastEditors[key] = 'Anônimo';
       if(!timestamps[key]) timestamps[key] = new Date().toISOString();
+      recentLocalChanges[key] = Date.now();
       changed = true;
       supabaseUpsert(key);
     }
@@ -521,6 +529,7 @@ function subscribeSupabaseRealtime(){
 
 function touchTimestamp(key){
   timestamps[key] = new Date().toISOString();
+  recentLocalChanges[key] = Date.now();
   const quem = ensureReviewUserName();
   if(quem) lastEditors[key] = quem;
   supabaseUpsert(key);
@@ -2143,6 +2152,6 @@ setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exe
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
 </script>
 
-<script src="duplicidades-review.js?v=20261013-retry-realtime"></script>
+<script src="duplicidades-review.js?v=20261013-clockfix"></script>
 <script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
 </body></html>
