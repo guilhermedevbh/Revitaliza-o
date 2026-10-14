@@ -2161,9 +2161,9 @@ subscribeAssignmentsRealtime();
 // achar (por engano) que não há nada a migrar de importações antigas feitas só aqui.
 loadImportedFromDB().finally(()=>{ loadImportedFromSupabase(); subscribeImportedRealtime(); });
 // reforço: revalida com o banco periodicamente, caso o Realtime não entregue algum evento
-setInterval(loadStateFromSupabase, 30000);
-setInterval(loadAssignmentsFromSupabase, 30000);
-setInterval(loadImportedFromSupabase, 30000);
+setInterval(loadStateFromSupabase, 120000);
+setInterval(loadAssignmentsFromSupabase, 120000);
+setInterval(loadImportedFromSupabase, 120000);
 // auto-refresh do dashboard em tempo real
 setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exec-updated');if(el)el.textContent='Atualizado em '+new Date().toLocaleString('pt-BR');}},15000);
 // auto-refresh da aba Protheus (status visual em tempo real)
