@@ -1196,6 +1196,18 @@ function drawRows(sheet){
 
 function toggleValidate(sheet, idx){
   const key = sheet+'|'+idx;
+  if(sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas'){
+    const assignInfo = assignments[key];
+    if(assignInfo && assignInfo.responsavel){
+      const me = reviewUserName();
+      const mine = TASK_USERS.find(u=>u.nome.toLowerCase()===me.toLowerCase());
+      if(!mine || mine.id!==assignInfo.responsavel){
+        const dono = taskUserById(assignInfo.responsavel);
+        alert('Esse produto está atribuído a '+(dono?dono.nome:'outro responsável')+'. Só quem está atribuído pode validar.');
+        return;
+      }
+    }
+  }
   const shouldValidate=!validated.has(key);
   if(shouldValidate) validated.add(key);
   else validated.delete(key);
