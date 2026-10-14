@@ -809,10 +809,22 @@ function computeStats(sheet){
   }
   let dup = 0;
   const filiaisDupSet = new Set();
-  for(const [k, arr] of groups){
-    if(arr.length>1){
-      dup += arr.length;
-      for(const f of filiaisPorChave.get(k)) filiaisDupSet.add(f);
+  if(sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas'){
+    // aqui cada linha já é um grupo de duplicados (foi filtrado antes em
+    // rebuildDuplicateAnalysis) — "Repetidos" não faz sentido como contagem de
+    // grupos repetidos (sempre seria 0); mostra a soma da coluna Qtd, ou seja,
+    // quantos produtos ao todo estão duplicados nessa aba.
+    const qtdIdx = headers.length - 1;
+    for(let i=0;i<n;i++){
+      if(!isActive(sheet,i)) continue;
+      dup += Number(getRow(sheet,i)[qtdIdx]) || 0;
+    }
+  } else {
+    for(const [k, arr] of groups){
+      if(arr.length>1){
+        dup += arr.length;
+        for(const f of filiaisPorChave.get(k)) filiaisDupSet.add(f);
+      }
     }
   }
   return {
