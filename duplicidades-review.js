@@ -387,7 +387,7 @@
     const target=String(description||'').trim().toUpperCase();if(!target)return null;
     for(let i=0;i<rowCount(sheet);i++){
       if(String(getRow(sheet,i)[di]||'').trim().toUpperCase()!==target)continue;
-      const info=assignments[syncKey(sheet,i)];
+      const info=assignments[sheet+'|'+i];
       if(info){const u=taskUserById(info.responsavel);if(u)return u.nome}
     }
     return null;
@@ -413,13 +413,13 @@
     if(!matches.length)return 0;
     description=String(sourceRow[sourceDescIdx]??'');
     if(shouldValidate){
-      if(!requireUserAlways()){ validated.delete(syncKey(sheet,idx)); return 0; }
+      if(!requireUserAlways()){ validated.delete(sheet+'|'+idx); return 0; }
     } else if(!requireUser()){
-      validated.add(syncKey(sheet,idx));
+      validated.add(sheet+'|'+idx);
       return 0;
     }
     if(shouldValidate){
-      const assignInfo=(typeof assignments!=='undefined')?assignments[syncKey(sheet,idx)]:null;
+      const assignInfo=(typeof assignments!=='undefined')?assignments[sheet+'|'+idx]:null;
       const atribuidoPara=assignInfo&&typeof taskUserById==='function'?(taskUserById(assignInfo.responsavel)||{}).nome||null:null;
       matches.forEach(i=>{
         validated.add(MAIN_SHEET+'|'+i);
