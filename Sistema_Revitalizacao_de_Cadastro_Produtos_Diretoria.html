@@ -382,8 +382,9 @@ if(typeof window!=='undefined'){
 function supabaseUpsert(key){
   if(!supa) return;
   const [sheet, idxStr] = key.split('|');
+  const idxNum = Number(idxStr);
   supa.from('validacoes').upsert({
-    key, sheet, row_idx: Number(idxStr),
+    key, sheet, row_idx: Number.isInteger(idxNum) ? idxNum : 0,
     validado: validated.has(key),
     excluido: deletes.has(key),
     edicao: edits[key] || null,
@@ -465,8 +466,9 @@ function supabaseUpsertBatch(keys){
   if(!supa || !keys.length) return;
   const rows = keys.map(key=>{
     const [sheet, idxStr] = key.split('|');
+    const idxNum = Number(idxStr);
     return {
-      key, sheet, row_idx: Number(idxStr),
+      key, sheet, row_idx: Number.isInteger(idxNum) ? idxNum : 0,
       validado: validated.has(key),
       excluido: deletes.has(key),
       edicao: edits[key] || null,
@@ -515,8 +517,9 @@ function assignmentSyncSupabase(key){
   if(!supa) return;
   const a = assignments[key];
   const [sheet, idxStr] = key.split('|');
+  const idxNum = Number(idxStr);
   supa.from('atribuicoes').upsert({
-    key, sheet, row_idx: Number(idxStr),
+    key, sheet, row_idx: Number.isInteger(idxNum) ? idxNum : 0,
     responsavel: a?a.responsavel:null,
     atribuido_por: a?a.atribuidoPor:null,
     atribuido_em: a?a.atribuidoEm:null,
@@ -558,7 +561,7 @@ function assignTask(sheet, idx, userId){
   markUserInteracting();
   const quem = ensureReviewUserName();
   if(!quem) return;
-  const key = sheet+'|'+idx;
+  const key = syncKey(sheet, idx);
   const current = assignments[key];
   const historico = current ? [...(current.historico||[]), {responsavel:current.responsavel, atribuidoPor:current.atribuidoPor, atribuidoEm:current.atribuidoEm}] : [];
   if(!userId) delete assignments[key];
@@ -582,7 +585,7 @@ function assignmentCounts(sheet){
   for(let i=0;i<n;i++){
     if(!isActive(sheet,i)) continue;
     total++;
-    const a = assignments[sheet+'|'+i];
+    const a = assignments[syncKey(sheet,i)];
     if(a && counts[a.responsavel]!==undefined) counts[a.responsavel]++;
   }
   return {counts, total};
@@ -739,35 +742,52 @@ function rebuildDuplicateAnalysis(){
   const descIdx=source.headers.findIndex(h=>/descric|descr|produto|nome/i.test(h));
   const ncmIdx=source.headers.findIndex(h=>/NCM|IPI/i.test(h));
   if(descIdx<0)return;
-  const normalize=v=>String(v??'').trim().replace(/\s+/g,' ').toUpperCase();
+  const normalize=v=>String(v??'').trim().replace(/\s+/g,' ').replace(/\|/g,' ').toUpperCase();
   const descriptionGroups=new Map(),ncmDescriptionGroups=new Map();
   for(let i=0;i<rowCount(MAIN_SHEET);i++){
     if(!isActive(MAIN_SHEET,i))continue;
     const row=getRow(MAIN_SHEET,i),description=String(row[descIdx]??'').trim(),descriptionKey=normalize(description);
     if(!descriptionKey)continue;
-    if(!descriptionGroups.has(descriptionKey))descriptionGroups.set(descriptionKey,{description,count:0});
+    if(!descriptionGroups.has(descriptionKey))descriptionGroups.set(descriptionKey,{description,count:0,key:descriptionKey});
     descriptionGroups.get(descriptionKey).count++;
     if(ncmIdx>=0){
-      const ncm=String(row[ncmIdx]??'').trim(),key=normalize(ncm)+'||'+descriptionKey;
-      if(!ncmDescriptionGroups.has(key))ncmDescriptionGroups.set(key,{ncm,description,count:0});
+      const ncm=String(row[ncmIdx]??'').trim(),key=normalize(ncm)+'~'+descriptionKey;
+      if(!ncmDescriptionGroups.has(key))ncmDescriptionGroups.set(key,{ncm,description,count:0,key});
       ncmDescriptionGroups.get(key).count++;
     }
   }
+  // chave de validação/atribuição/exclusão baseada no CONTEÚDO (descrição/NCM), não na posição:
+  // a lista acima é recalculada do zero a cada render (grupos com count>1 mudam de tamanho e
+  // de ordem conforme produtos vão sendo validados em qualquer lugar do site), então usar a
+  // posição do array como chave fazia uma validação "pular" de produto silenciosamente sempre
+  // que a lista mudava de tamanho — por isso os números divergiam entre usuários.
   if(DATA.Descricoes_Duplicadas){
+    const ordered=[...descriptionGroups.values()].filter(x=>x.count>1).sort((a,b)=>a.description.localeCompare(b.description,'pt-BR'));
     DATA.Descricoes_Duplicadas.headers=['Descricao','Quantidade'];
-    DATA.Descricoes_Duplicadas.rows=[...descriptionGroups.values()].filter(x=>x.count>1).sort((a,b)=>a.description.localeCompare(b.description,'pt-BR')).map(x=>[x.description,x.count]);
+    DATA.Descricoes_Duplicadas.rows=ordered.map(x=>[x.description,x.count]);
+    DATA.Descricoes_Duplicadas.rowKeys=ordered.map(x=>x.key);
     imported.Descricoes_Duplicadas=[];
   }
   if(DATA.NCM_Mesma_Descricao){
+    const ordered=[...ncmDescriptionGroups.values()].filter(x=>x.count>1).sort((a,b)=>a.description.localeCompare(b.description,'pt-BR')||a.ncm.localeCompare(b.ncm,'pt-BR'));
     DATA.NCM_Mesma_Descricao.headers=['Pos.IPI/NCM','Descricao','Qtd'];
-    DATA.NCM_Mesma_Descricao.rows=[...ncmDescriptionGroups.values()].filter(x=>x.count>1).sort((a,b)=>a.description.localeCompare(b.description,'pt-BR')||a.ncm.localeCompare(b.ncm,'pt-BR')).map(x=>[x.ncm,x.description,x.count]);
+    DATA.NCM_Mesma_Descricao.rows=ordered.map(x=>[x.ncm,x.description,x.count]);
+    DATA.NCM_Mesma_Descricao.rowKeys=ordered.map(x=>x.key);
     imported.NCM_Mesma_Descricao=[];
   }
+}
+// chave estável de sincronização: usa a chave por conteúdo (rowKeys) quando a aba é
+// recalculada a cada render (NCM_Mesma_Descricao/Descricoes_Duplicadas); nas demais abas
+// (linhas fixas da planilha) continua sendo "aba|posição", igual sempre foi.
+function syncKey(sheet, i){
+  const d = DATA[sheet];
+  const k = d && d.rowKeys ? d.rowKeys[i] : null;
+  return k!=null ? sheet+'|'+k : sheet+'|'+i;
 }
 
 // ===== contagem de duplicidade em tempo real =====
 function getRow(sheet, i){ return edits[sheet+'|'+i] || rawRow(sheet, i); }
-function isActive(sheet, i){ return !deletes.has(sheet+'|'+i); }
+function isActive(sheet, i){ return !deletes.has(syncKey(sheet,i)); }
 
 function computeStats(sheet){
   const d = DATA[sheet]; if(!d) return {total:0,dup:0,val:0,pend:0,filiaisDup:[]};
@@ -782,7 +802,7 @@ function computeStats(sheet){
   for(let i=0;i<n;i++){
     if(!isActive(sheet,i)) continue;
     total++;
-    if(validated.has(sheet+'|'+i)) val++;
+    if(validated.has(syncKey(sheet,i))) val++;
     const r = getRow(sheet,i);
     const key = (descIdx>=0 ? String(r[descIdx]||'').trim().toUpperCase() : '') +
                 '||' + (ncmIdx>=0 ? String(r[ncmIdx]||'').trim() : '');
@@ -1127,11 +1147,11 @@ function drawRows(sheet){
   const n = rowCount(sheet);
   const rowOrder=Array.from({length:n},(_,i)=>i);
   if(sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas'){
-    rowOrder.sort((a,b)=>Number(validated.has(sheet+'|'+a))-Number(validated.has(sheet+'|'+b))||a-b);
+    rowOrder.sort((a,b)=>Number(validated.has(syncKey(sheet,a)))-Number(validated.has(syncKey(sheet,b)))||a-b);
   }
   for(const i of rowOrder){
-    if(deletes.has(sheet+'|'+i)) continue;
-    const key = sheet+'|'+i;
+    if(deletes.has(syncKey(sheet,i))) continue;
+    const key = syncKey(sheet,i);
     const row = getRow(sheet,i);
     if(f.q && row.join(' ').toLowerCase().indexOf(f.q)===-1) continue;
     if(f.filial && f.filialIdx>=0 && String(row[f.filialIdx]??'').toLowerCase().indexOf(f.filial)===-1) continue;
@@ -1195,7 +1215,7 @@ function drawRows(sheet){
 }
 
 function toggleValidate(sheet, idx){
-  const key = sheet+'|'+idx;
+  const key = syncKey(sheet, idx);
   const shouldValidate=!validated.has(key);
   if(shouldValidate) validated.add(key);
   else validated.delete(key);
@@ -1566,8 +1586,9 @@ function deleteCurrent(){
 }
 function deleteRow(sheet, idx){
   if(!confirm('Excluir este registro?')) return;
-  deletes.add(sheet+'|'+idx);
-  touchTimestamp(sheet+'|'+idx);
+  const key = syncKey(sheet, idx);
+  deletes.add(key);
+  touchTimestamp(key);
   persist(); render();
 }
 
@@ -1579,7 +1600,7 @@ function bulkDeleteDuplicates(sheet){
   let dupCount = 0;
   const n = rowCount(sheet);
   for(let i=0;i<n;i++){
-    if(deletes.has(sheet+'|'+i)) continue;
+    if(deletes.has(syncKey(sheet,i))) continue;
     const r = getRow(sheet,i);
     const key = descIdx>=0 && ncmIdx>=0 ? (r[descIdx]+'||'+r[ncmIdx]) : r.join('||');
     if(seen.has(key)) dupCount++; else seen.set(key,i);
@@ -1588,10 +1609,10 @@ function bulkDeleteDuplicates(sheet){
   if(!confirm(`Excluir ${dupCount} linha(s) duplicada(s)? (mantém a primeira ocorrência)`)) return;
   seen.clear();
   for(let i=0;i<n;i++){
-    if(deletes.has(sheet+'|'+i)) continue;
+    if(deletes.has(syncKey(sheet,i))) continue;
     const r = getRow(sheet,i);
     const key = descIdx>=0 && ncmIdx>=0 ? (r[descIdx]+'||'+r[ncmIdx]) : r.join('||');
-    if(seen.has(key)) { deletes.add(sheet+'|'+i); touchTimestamp(sheet+'|'+i); } else seen.set(key,i);
+    if(seen.has(key)) { const k=syncKey(sheet,i); deletes.add(k); touchTimestamp(k); } else seen.set(key,i);
   }
   persist(); render();
 }
@@ -1826,7 +1847,7 @@ function buildSheetExport(sheet, onlyChanged){
   const out = [headers];
   const n = rowCount(sheet);
   for(let i=0;i<n;i++){
-    const key = sheet+'|'+i;
+    const key = syncKey(sheet,i);
     const valTxt = validated.has(key)?'VALIDADO':'PENDENTE';
     const isImported = i >= d.rows.length;
     if(deletes.has(key)){
@@ -2141,6 +2162,6 @@ setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exe
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
 </script>
 
-<script src="duplicidades-review.js?v=20261013-clockfix"></script>
+<script src="duplicidades-review.js?v=20261015-synckey2"></script>
 <script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
 </body></html>
