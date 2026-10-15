@@ -7,8 +7,7 @@
 <link rel="icon" href="logo-emtel-transparente.png">
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('emtel_theme')||((window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light')}catch(e){document.documentElement.dataset.theme='light'}</script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
 :root{--azul:#1e4fb8;--azul2:#143a8a;--vermelho:#e3122b;--bg:#f4f6fb;--card:#fff;--txt:#1a2238;--muted:#6b7280;--bd:#e5e7eb;--amarelo:#fff7c2;}
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Roboto,sans-serif}
@@ -329,110 +328,21 @@ const lastEditors = JSON.parse(localStorage.getItem('emtel_editors')||'{}');
 const recentLocalChanges = {};
 const RECENT_LOCAL_CHANGE_MS = 15000;
 
-// ===== Firebase/Firestore: banco de dados compartilhado das validações/edições/exclusões =====
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyCn4Q0yg7blrauq9sjbKVZIv38zhouPJPQ",
-  authDomain: "revitacad-c9d02.firebaseapp.com",
-  projectId: "revitacad-c9d02",
-  storageBucket: "revitacad-c9d02.firebasestorage.app",
-  messagingSenderId: "251646638041",
-  appId: "1:251646638041:web:7786e2aacd813c47a20bc8"
-};
-// camada de compatibilidade: imita só o pedaço da API do supabase-js que o site usa
-// (from().select/upsert/insert/delete, channel().on('postgres_changes').subscribe()),
-// mas por baixo salva tudo no Firestore — assim o resto do código (centenas de chamadas
-// "supa.xxx" espalhadas pelo site) não precisou ser reescrito uma por uma.
-function createFirestoreShim(config){
-  if(typeof firebase==='undefined') return null;
-  if(!firebase.apps.length) firebase.initializeApp(config);
-  const db = firebase.firestore();
-  function docId(table, row){
-    if(row.key!==undefined && row.key!==null) return String(row.key);
-    if(row.id!==undefined && row.id!==null) return String(row.id);
-    return db.collection(table).doc().id;
-  }
-  function writeOp(table, rows, merge){
-    const arr = Array.isArray(rows) ? rows : [rows];
-    const batch = db.batch();
-    arr.forEach(row=>batch.set(db.collection(table).doc(docId(table,row)), row, {merge}));
-    return { then(onFulfilled){ batch.commit().then(()=>onFulfilled({error:null})).catch(error=>onFulfilled({error})); return this; } };
-  }
-  function from(table){
-    return {
-      select(){
-        let orderField=null, orderDesc=false, rangeFrom=null, rangeTo=null, limitN=null;
-        const builder = {
-          order(field, opts){ orderField=field; orderDesc = !!(opts && opts.ascending===false); return builder; },
-          range(from,to){ rangeFrom=from; rangeTo=to; return builder; },
-          limit(n){ limitN=n; return builder; },
-          then(onFulfilled){
-            let q = db.collection(table);
-            if(orderField) q = q.orderBy(orderField, orderDesc?'desc':'asc');
-            q.get().then(snap=>{
-              let data = snap.docs.map(d=>{
-                const v = d.data();
-                return Object.assign({}, v, { key: v.key!==undefined?v.key:d.id, id: v.id!==undefined?v.id:d.id });
-              });
-              if(rangeFrom!=null) data = data.slice(rangeFrom, rangeTo+1);
-              if(limitN!=null) data = data.slice(0, limitN);
-              onFulfilled({data, error:null});
-            }).catch(error=>onFulfilled({data:null, error}));
-            return this;
-          }
-        };
-        return builder;
-      },
-      upsert(rows){ return writeOp(table, rows, true); },
-      insert(rows){ return writeOp(table, rows, false); },
-      delete(){
-        return { eq(_field, value){
-          return { then(onFulfilled){
-            db.collection(table).doc(String(value)).delete()
-              .then(()=>onFulfilled({error:null})).catch(error=>onFulfilled({error}));
-            return this;
-          } };
-        } };
-      }
-    };
-  }
-  function channel(name){
-    const chan = { _unsubs: [] };
-    chan.on = function(_evt, filter, callback){
-      chan._table = filter.table; chan._filterEvent = filter.event; chan._callback = callback;
-      return chan;
-    };
-    chan.subscribe = function(statusCb){
-      let first = true;
-      const unsub = db.collection(chan._table).onSnapshot(snapshot=>{
-        if(first){ first=false; if(statusCb) statusCb('SUBSCRIBED'); return; }
-        snapshot.docChanges().forEach(change=>{
-          const eventType = change.type==='added'?'INSERT':change.type==='modified'?'UPDATE':'DELETE';
-          if(chan._filterEvent!=='*' && chan._filterEvent!==eventType) return;
-          const v = change.doc.data();
-          const row = Object.assign({}, v, { key: v.key!==undefined?v.key:change.doc.id, id: v.id!==undefined?v.id:change.doc.id });
-          chan._callback({ eventType, new: eventType==='DELETE'?null:row, old: eventType==='DELETE'?row:null });
-        });
-      }, ()=>{ if(statusCb) statusCb('CHANNEL_ERROR'); });
-      chan._unsubs.push(unsub);
-      return chan;
-    };
-    chan.unsubscribe = function(){ chan._unsubs.forEach(fn=>fn()); };
-    return chan;
-  }
-  return { from, channel, removeAllChannels(){} };
-}
-const supa = createFirestoreShim(FIREBASE_CONFIG);
+// ===== Supabase: banco de dados compartilhado das validações/edições/exclusões =====
+const SUPABASE_URL = 'https://chgiayjwhhkyjaykguyv.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_ewTRyjtc2i-Vb4zB_DbL-g_QSQ02s6P';
+const supa = (typeof supabase!=='undefined' && supabase.createClient)
+  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 // O Supabase/PostgREST limita cada select('*') a no máximo 1000 linhas por padrão,
 // sem avisar — acima disso a base fica "cortada" de forma diferente para cada usuário
 // (a ordem não é garantida), fazendo os totais de validados divergirem entre navegadores.
 // Esta função busca TODAS as linhas da tabela, paginando em blocos de 1000.
-async function fetchAllRows(table, orderField){
-  orderField = orderField || 'key';
+async function fetchAllRows(table){
   const pageSize = 1000;
   let from = 0, all = [];
   for(;;){
-    const { data, error } = await supa.from(table).select('*').order(orderField).range(from, from+pageSize-1);
+    const { data, error } = await supa.from(table).select('*').order('key').range(from, from+pageSize-1);
     if(error) throw error;
     if(!data || !data.length) break;
     all = all.concat(data);
@@ -743,7 +653,7 @@ async function fetchAllImportedRows(){
   const pageSize = 1000;
   let from = 0, all = [];
   for(;;){
-    const { data, error } = await supa.from('produtos_importados').select('*').order('criado_em').range(from, from+pageSize-1);
+    const { data, error } = await supa.from('produtos_importados').select('*').order('id').range(from, from+pageSize-1);
     if(error) throw error;
     if(!data || !data.length) break;
     all = all.concat(data);
@@ -755,8 +665,7 @@ async function fetchAllImportedRows(){
 async function saveImportedToSupabase(sheet, rows, fileName){
   if(!supa || !rows || !rows.length) return;
   const quem = reviewUserName() || 'Anônimo';
-  const base = Date.now();
-  const payload = rows.map((linha,i)=>({ sheet, linha, usuario: quem, arquivo: fileName||null, criado_em: new Date(base+i).toISOString() }));
+  const payload = rows.map(linha=>({ sheet, linha, usuario: quem, arquivo: fileName||null }));
   const chunkSize = 300;
   for(let i=0;i<payload.length;i+=chunkSize){
     supa.from('produtos_importados').insert(payload.slice(i,i+chunkSize)).then(({error})=>{ if(error) console.warn('Falha ao sincronizar produtos importados:', error.message); });
@@ -883,22 +792,10 @@ function computeStats(sheet){
   }
   let dup = 0;
   const filiaisDupSet = new Set();
-  if(sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas'){
-    // aqui cada linha já é um grupo de duplicados (foi filtrado antes em
-    // rebuildDuplicateAnalysis) — "Repetidos" não faz sentido como contagem de
-    // grupos repetidos (sempre seria 0); mostra a soma da coluna Qtd, ou seja,
-    // quantos produtos ao todo estão duplicados nessa aba.
-    const qtdIdx = headers.length - 1;
-    for(let i=0;i<n;i++){
-      if(!isActive(sheet,i)) continue;
-      dup += Number(getRow(sheet,i)[qtdIdx]) || 0;
-    }
-  } else {
-    for(const [k, arr] of groups){
-      if(arr.length>1){
-        dup += arr.length;
-        for(const f of filiaisPorChave.get(k)) filiaisDupSet.add(f);
-      }
+  for(const [k, arr] of groups){
+    if(arr.length>1){
+      dup += arr.length;
+      for(const f of filiaisPorChave.get(k)) filiaisDupSet.add(f);
     }
   }
   return {
@@ -1299,18 +1196,6 @@ function drawRows(sheet){
 
 function toggleValidate(sheet, idx){
   const key = sheet+'|'+idx;
-  if(sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas'){
-    const assignInfo = assignments[key];
-    if(assignInfo && assignInfo.responsavel){
-      const me = reviewUserName();
-      const mine = TASK_USERS.find(u=>u.nome.toLowerCase()===me.toLowerCase());
-      if(!mine || mine.id!==assignInfo.responsavel){
-        const dono = taskUserById(assignInfo.responsavel);
-        alert('Esse produto está atribuído a '+(dono?dono.nome:'outro responsável')+'. Só quem está atribuído pode validar.');
-        return;
-      }
-    }
-  }
   const shouldValidate=!validated.has(key);
   if(shouldValidate) validated.add(key);
   else validated.delete(key);
@@ -2247,15 +2132,15 @@ subscribeAssignmentsRealtime();
 // achar (por engano) que não há nada a migrar de importações antigas feitas só aqui.
 loadImportedFromDB().finally(()=>{ loadImportedFromSupabase(); subscribeImportedRealtime(); });
 // reforço: revalida com o banco periodicamente, caso o Realtime não entregue algum evento
-setInterval(loadStateFromSupabase, 1800000);
-setInterval(loadAssignmentsFromSupabase, 1800000);
-setInterval(loadImportedFromSupabase, 1800000);
+setInterval(loadStateFromSupabase, 30000);
+setInterval(loadAssignmentsFromSupabase, 30000);
+setInterval(loadImportedFromSupabase, 30000);
 // auto-refresh do dashboard em tempo real
 setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exec-updated');if(el)el.textContent='Atualizado em '+new Date().toLocaleString('pt-BR');}},15000);
 // auto-refresh da aba Protheus (status visual em tempo real)
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
 </script>
 
-<script src="duplicidades-review.js?v=20261015-firebase"></script>
+<script src="duplicidades-review.js?v=20261013-clockfix"></script>
 <script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
 </body></html>
