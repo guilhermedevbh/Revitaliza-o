@@ -183,6 +183,12 @@ main{padding:28px 32px 42px;max-width:1680px}
 .card:nth-child(2) .metric-icon{background:#fff0f3;color:var(--vermelho)}.card:nth-child(3) .metric-icon{background:#eafaf5;color:var(--verde)}.card:nth-child(4) .metric-icon{background:#fff7e7;color:var(--ambar)}.card:nth-child(5) .metric-icon{background:#f5eee0;color:#8a5a00}
 .card .v{font-size:34px;letter-spacing:-1px;color:var(--txt);line-height:1}.card .d{font-size:12px;margin-top:12px;color:#718096;line-height:1.4}
 .metric-foot{display:flex;align-items:center;gap:7px}.metric-dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+.metric-bar{height:4px;border-radius:99px;background:var(--azul3);margin-top:14px;overflow:hidden}
+.metric-bar-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--azul2),var(--azul));transition:width .4s}
+.card:nth-child(2) .metric-bar-fill{background:linear-gradient(90deg,#b00c20,var(--vermelho))}
+.card:nth-child(3) .metric-bar-fill{background:linear-gradient(90deg,#0a8a5f,var(--verde))}
+.card:nth-child(4) .metric-bar-fill{background:linear-gradient(90deg,#c98a1f,var(--ambar))}
+.card:nth-child(5) .metric-bar-fill{background:linear-gradient(90deg,#6b4710,#8a5a00)}
 .diamond{display:none}
 .exec-grid{display:grid;grid-template-columns:1.55fr .85fr;gap:20px}
 .panel{border:1px solid rgba(216,225,239,.9);border-radius:16px;padding:22px 24px;box-shadow:var(--shadow);margin-bottom:20px}
@@ -938,14 +944,17 @@ function renderResumo(m){
   const totalBase=rowCount(MAIN_SHEET), desativados=Math.max(0,totalBase-st.total);
   const separados=(typeof window.selectedForDeletion!=='undefined')?window.selectedForDeletion.size:0;
   const pendAjustado=Math.max(0,st.pend-separados);
+  const pctBase=totalBase?Math.round(st.total*100/totalBase):0;
+  const pctPendAj=st.total?Math.round(pendAjustado*100/st.total):0;
+  const pctSep=st.total?Math.round(separados*100/st.total):0;
   m.innerHTML=`
     <div class="page-title"><div><div class="page-kicker">Visão executiva</div><h2>Panorama da base cadastral</h2><p>Indicadores consolidados para acompanhamento da revitalização.</p></div><div class="date-badge">Atualizado em ${now}</div></div>
     <div class="cards cards-cols-5">
-      <div class="card clk" onclick="goTo('${MAIN_SHEET}')"><div class="card-top"><h3>Total na base</h3><span class="metric-icon">🗂️</span></div><div class="v">${totalBase.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> ${desativados.toLocaleString('pt-BR')} desativado(s)</div></div>
-      <div class="card clk" onclick="goTo('${MAIN_SHEET}')"><div class="card-top"><h3>Produtos ativos</h3><span class="metric-icon">▦</span></div><div class="v">${st.total.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> Base consolidada</div></div>
-      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyValidated:true})"><div class="card-top"><h3>Validados</h3><span class="metric-icon">✓</span></div><div class="v">${st.val.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--verde)"></i> ${pct}% concluído</div></div>
-      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})"><div class="card-top"><h3>Pendentes</h3><span class="metric-icon">◷</span></div><div class="v">${pendAjustado.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--ambar)"></i> Aguardando análise</div></div>
-      <div class="card clk" onclick="goTo('deactivationReport')"><div class="card-top"><h3>Separados p/ desativação</h3><span class="metric-icon">🗃️</span></div><div class="v">${separados.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:#8a5a00"></i> No Relatório de Desativação</div></div>
+      <div class="card clk" onclick="goTo('${MAIN_SHEET}')"><div class="card-top"><h3>Total na base</h3><span class="metric-icon">🗂️</span></div><div class="v">${totalBase.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> ${desativados.toLocaleString('pt-BR')} desativado(s)</div><div class="metric-bar"><div class="metric-bar-fill" style="width:100%"></div></div></div>
+      <div class="card clk" onclick="goTo('${MAIN_SHEET}')"><div class="card-top"><h3>Produtos ativos</h3><span class="metric-icon">▦</span></div><div class="v">${st.total.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> Base consolidada</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pctBase}%"></div></div></div>
+      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyValidated:true})"><div class="card-top"><h3>Validados</h3><span class="metric-icon">✓</span></div><div class="v">${st.val.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--verde)"></i> ${pct}% concluído</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pct}%"></div></div></div>
+      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})"><div class="card-top"><h3>Pendentes</h3><span class="metric-icon">◷</span></div><div class="v">${pendAjustado.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--ambar)"></i> Aguardando análise</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pctPendAj}%"></div></div></div>
+      <div class="card clk" onclick="goTo('deactivationReport')"><div class="card-top"><h3>Separados p/ desativação</h3><span class="metric-icon">🗃️</span></div><div class="v">${separados.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:#8a5a00"></i> No Relatório de Desativação</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pctSep}%"></div></div></div>
     </div>
     <div class="exec-grid">
       <section class="panel hero-panel"><div class="hero-copy"><div class="page-kicker">Programa de qualidade cadastral</div><h2>Decisões mais rápidas começam com dados confiáveis</h2><p>Centralize a análise, priorize duplicidades e acompanhe a validação da base em tempo real. Os indicadores são recalculados automaticamente a cada atualização.</p><div class="hero-actions"><button class="quick-btn primary" onclick="goTo('dashboard')">Abrir dashboard</button><button class="quick-btn" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})">Revisar pendências</button></div></div><div class="progress-ring" style="--p:${pct}"><div><strong>${pct}%</strong><span>concluído</span></div></div></section>
