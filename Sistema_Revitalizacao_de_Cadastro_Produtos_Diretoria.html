@@ -217,11 +217,11 @@ main{padding:28px 32px 42px;max-width:1680px}
 .exec-bar{width:26px;border-radius:6px 6px 0 0;min-height:3px}
 .exec-bar-labels{display:flex;justify-content:space-around;margin-top:10px}
 .exec-bar-labels span{font-size:10.5px;color:#7f93b3;text-align:center;flex:1}
-.exec-donut-wrap{display:flex;justify-content:center;margin:4px 0 18px 0}
-.exec-donut{width:140px;height:140px;border-radius:50%;display:flex;align-items:center;justify-content:center}
-.exec-donut-hole{width:86px;height:86px;border-radius:50%;background:#0e1a2c;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.exec-donut-hole b{font-size:18px;color:#fff}
-.exec-donut-hole small{font-size:9.5px;color:#7f93b3}
+.resumo-donut-wrap{display:flex;justify-content:center;margin:4px 0 18px 0}
+.resumo-donut{width:140px;height:140px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.resumo-donut-hole{width:86px;height:86px;border-radius:50%;background:#0e1a2c;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.resumo-donut-hole b{font-size:18px;color:#fff}
+.resumo-donut-hole small{font-size:9.5px;color:#7f93b3}
 .exec-legend-list{display:flex;flex-direction:column;gap:9px}
 .exec-legend-list div{display:flex;align-items:center;gap:9px;font-size:12.5px}
 .exec-legend-list i{width:9px;height:9px;border-radius:3px;display:inline-block}
@@ -1142,9 +1142,9 @@ function resumoChartsHtml(allowedSet){
       <div class="exec-dark-panel">
         <h2>Distribuição por Responsável</h2>
         <div class="exec-dark-sub">Tarefas atribuídas na base</div>
-        <div class="exec-donut-wrap">
-          <div class="exec-donut" style="background:conic-gradient(${segs || '#1c2a40 0% 100%'})">
-            <div class="exec-donut-hole"><b>${totalResp.toLocaleString('pt-BR')}</b><small>atribuídos</small></div>
+        <div class="resumo-donut-wrap">
+          <div class="resumo-donut" style="background:conic-gradient(${segs || '#1c2a40 0% 100%'})">
+            <div class="resumo-donut-hole"><b>${totalResp.toLocaleString('pt-BR')}</b><small>atribuídos</small></div>
           </div>
         </div>
         <div class="exec-legend-list">${legend}</div>
