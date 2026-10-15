@@ -5,7 +5,7 @@
 <title>RevitaCad</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" href="logo-emtel-transparente.png">
-<script>document.documentElement.dataset.theme='dark';</script>
+<script>try{document.documentElement.dataset.theme=localStorage.getItem('emtel_theme')||((window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light')}catch(e){document.documentElement.dataset.theme='light'}</script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
@@ -181,25 +181,8 @@ main{padding:28px 32px 42px;max-width:1680px}
 .card h3{font-size:11px;letter-spacing:1.1px;margin:0;color:#63728a}
 .metric-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--azul3);color:var(--azul);font-size:16px}
 .card:nth-child(2) .metric-icon{background:#fff0f3;color:var(--vermelho)}.card:nth-child(3) .metric-icon{background:#eafaf5;color:var(--verde)}.card:nth-child(4) .metric-icon{background:#fff7e7;color:var(--ambar)}.card:nth-child(5) .metric-icon{background:#f5eee0;color:#8a5a00}
-/* cards do Resumo com fundo tingido pela cor do indicador, como no modelo de referência */
-.cards-cols-5 .card:nth-child(1){background:linear-gradient(160deg,#16305c,#0e1a2c 65%)}
-.cards-cols-5 .card:nth-child(2){background:linear-gradient(160deg,#16305c,#0e1a2c 65%)}
-.cards-cols-5 .card:nth-child(3){background:linear-gradient(160deg,#123a2e,#0e1a2c 65%)}
-.cards-cols-5 .card:nth-child(4){background:linear-gradient(160deg,#3a2c10,#0e1a2c 65%)}
-.cards-cols-5 .card:nth-child(5){background:linear-gradient(160deg,#352a12,#0e1a2c 65%)}
-.cards-cols-5 .card:nth-child(1) .metric-icon,.cards-cols-5 .card:nth-child(2) .metric-icon{background:rgba(77,141,255,.18);color:#8bb4ff}
-.cards-cols-5 .card:nth-child(3) .metric-icon{background:rgba(83,229,173,.18);color:#53e5ad}
-.cards-cols-5 .card:nth-child(4) .metric-icon{background:rgba(243,185,77,.18);color:#f3b94d}
-.cards-cols-5 .card:nth-child(5) .metric-icon{background:rgba(214,161,74,.18);color:#d6a14a}
-.metric-spark{display:block;width:100%;height:28px;margin-top:10px}
 .card .v{font-size:34px;letter-spacing:-1px;color:var(--txt);line-height:1}.card .d{font-size:12px;margin-top:12px;color:#718096;line-height:1.4}
 .metric-foot{display:flex;align-items:center;gap:7px}.metric-dot{width:7px;height:7px;border-radius:50%;background:currentColor}
-.metric-bar{height:4px;border-radius:99px;background:var(--azul3);margin-top:14px;overflow:hidden}
-.metric-bar-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--azul2),var(--azul));transition:width .4s}
-.card:nth-child(2) .metric-bar-fill{background:linear-gradient(90deg,#b00c20,var(--vermelho))}
-.card:nth-child(3) .metric-bar-fill{background:linear-gradient(90deg,#0a8a5f,var(--verde))}
-.card:nth-child(4) .metric-bar-fill{background:linear-gradient(90deg,#c98a1f,var(--ambar))}
-.card:nth-child(5) .metric-bar-fill{background:linear-gradient(90deg,#6b4710,#8a5a00)}
 .diamond{display:none}
 .exec-grid{display:grid;grid-template-columns:1.55fr .85fr;gap:20px}
 .panel{border:1px solid rgba(216,225,239,.9);border-radius:16px;padding:22px 24px;box-shadow:var(--shadow);margin-bottom:20px}
@@ -216,31 +199,7 @@ main{padding:28px 32px 42px;max-width:1680px}
 .insight-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.insight{padding:15px;background:#f8faff;border:1px solid #e9eef6;border-radius:12px}.insight b{font-size:19px;color:var(--txt)}.insight span{display:block;color:var(--muted);font-size:11px;margin-top:4px}
 .tbl-wrap{border-radius:12px}thead{background:#123e8c}.toolbar input[type=text],.fld input,.fld textarea{border-color:#d7e0ec}
 .btn{border-radius:9px;box-shadow:0 4px 10px rgba(18,62,140,.15)}
-.exec-dark-charts{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:20px}
-.exec-dark-panel{background:#0e1a2c;border:1px solid #1c2a40;border-radius:16px;padding:22px 24px;color:#e7edf7}
-.exec-dark-panel h2{font-size:16px;font-weight:800;color:#fff;margin:0 0 4px 0}
-.exec-dark-sub{font-size:12px;color:#64779a;margin-bottom:18px}
-.exec-bar-legend{display:flex;gap:14px;float:right;margin-top:-30px}
-.exec-bar-legend span{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#aebbd0}
-.exec-bar-legend i{width:9px;height:9px;border-radius:3px;display:inline-block}
-.exec-bars{display:flex;align-items:flex-end;justify-content:space-around;height:180px;border-bottom:1px solid #1c2a40;gap:10px;padding:0 4px;clear:both}
-.exec-bar-group{display:flex;gap:5px;align-items:flex-end;height:100%}
-.exec-bar{width:26px;border-radius:6px 6px 0 0;min-height:3px}
-.exec-bar-labels{display:flex;justify-content:space-around;margin-top:10px}
-.exec-bar-labels span{font-size:10.5px;color:#7f93b3;text-align:center;flex:1}
-.period-btn{background:#162438;color:#aebbd0;box-shadow:none}
-.period-btn.active{background:var(--azul);color:#fff}
-.resumo-donut-wrap{display:flex;justify-content:center;margin:4px 0 18px 0}
-.resumo-donut{width:140px;height:140px;border-radius:50%;display:flex;align-items:center;justify-content:center}
-.resumo-donut-hole{width:86px;height:86px;border-radius:50%;background:#0e1a2c;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.resumo-donut-hole b{font-size:18px;color:#fff}
-.resumo-donut-hole small{font-size:9.5px;color:#7f93b3}
-.exec-legend-list{display:flex;flex-direction:column;gap:9px}
-.exec-legend-list div{display:flex;align-items:center;gap:9px;font-size:12.5px}
-.exec-legend-list i{width:9px;height:9px;border-radius:3px;display:inline-block}
-.exec-legend-list span{flex:1;color:#dbe4f3}
-.exec-legend-list b{color:#7f93b3}
-@media(max-width:1100px){.cards{grid-template-columns:repeat(2,1fr)}.exec-grid{grid-template-columns:1fr}.exec-dark-charts{grid-template-columns:1fr}}
+@media(max-width:1100px){.cards{grid-template-columns:repeat(2,1fr)}.exec-grid{grid-template-columns:1fr}}
 @media(max-width:720px){header{padding:16px 18px;min-height:88px}header img{height:46px;min-width:90px}header h1{font-size:18px}.header-meta{display:none}nav{top:88px;padding:0 10px}nav button{padding:13px 11px}main{padding:20px 14px}.cards{grid-template-columns:1fr}.page-title{align-items:flex-start;flex-direction:column}.hero-panel{align-items:flex-start;flex-direction:column}.progress-ring{width:112px;height:112px}.progress-ring:before{width:84px;height:84px}.insight-row{grid-template-columns:1fr}}
 
 
@@ -249,32 +208,11 @@ header img#logo{width:176px;height:64px;min-width:176px;object-fit:contain;objec
 @media(max-width:720px){header img#logo{width:132px;height:48px;min-width:132px}}
 
 
-/* ===== menu lateral (sidebar) escuro, estilo do modelo de referência ===== */
-#appBody{display:flex;align-items:stretch}
-nav{background:#0b1626!important;border-bottom:0!important;border-right:1px solid #1c2a40;box-shadow:none!important;
-  padding:18px 10px!important;display:flex;flex-direction:column;align-items:stretch;gap:2px;
-  position:sticky;top:104px;width:230px;flex:0 0 230px;max-height:calc(100vh - 104px);overflow-y:auto;z-index:40}
-#navScroll{display:flex;flex-direction:column;gap:2px;overflow:visible;flex:1;min-width:0}
-nav button{background:none;border:none;border-left:3px solid transparent;border-radius:9px;
-  padding:11px 13px;font-size:13px;font-weight:600;color:#aebbd0;cursor:pointer;text-align:left;
-  white-space:normal;line-height:1.3;border-bottom:0!important;transition:.15s}
-nav button:hover{background:#13203399;color:#f3f6fc}
-nav button.active{background:#15243b;color:#fff!important;border-left-color:#4d8dff}
-nav button[data-id="config"]{border-left:3px solid transparent!important;margin-left:0!important;margin-top:10px;padding-top:11px;border-top:1px solid #1c2a40!important}
-main{flex:1;min-width:0;max-width:none;margin:0}
-@media(max-width:860px){
-  #appBody{flex-direction:column}
-  nav{position:static;width:auto;flex:none;max-height:none;flex-direction:row;overflow-x:auto;overflow-y:visible;border-right:0;border-bottom:1px solid #1c2a40}
-  #navScroll{flex-direction:row}
-  nav button{white-space:nowrap;border-left:0;border-bottom:3px solid transparent!important}
-  nav button.active{border-bottom-color:#4d8dff!important}
-  nav button[data-id="config"]{margin-top:0;border-top:0!important;border-left:1px solid #1c2a40!important}
-}
 </style>
 <link rel="stylesheet" href="duplicidades-review.css">
 <link rel="stylesheet" href="dashboard-executivo.css?v=20261001-remover-repetidos">
-<link rel="stylesheet" href="tema-relogio.css?v=20261015-sidebar-fix">
-<link rel="stylesheet" href="tema-contraste.css?v=20261015-sidebar-fix">
+<link rel="stylesheet" href="tema-relogio.css">
+<link rel="stylesheet" href="tema-contraste.css?v=20261001-badges-escuros">
 </head>
 <body>
 <div class="access-gate" id="accessGate">
@@ -304,10 +242,8 @@ try{
   <img id="logo" alt="Emtel"/>
   <div><h1>RevitaCad</h1><p>Revitalização inteligente de produtos e fornecedores</p></div><div class="header-meta"><input id="userNameInput" class="user-name-input" placeholder="👤 Seu nome" oninput="setReviewUserName(this.value)"><div class="status-chip" id="syncIndicator"><i></i> <span id="syncIndicatorText">Conectando...</span></div><button class="global-control" type="button" onclick="logoutAccessGate()" title="Sair do sistema">🚪 Sair</button></div>
 </header>
-<div id="appBody">
 <nav id="nav"><div id="navScroll"></div></nav>
 <main id="main"></main>
-</div>
 
 <div class="modal" id="modal">
   <div class="box">
@@ -446,9 +382,8 @@ if(typeof window!=='undefined'){
 function supabaseUpsert(key){
   if(!supa) return;
   const [sheet, idxStr] = key.split('|');
-  const idxNum = Number(idxStr);
   supa.from('validacoes').upsert({
-    key, sheet, row_idx: Number.isInteger(idxNum) ? idxNum : 0,
+    key, sheet, row_idx: Number(idxStr),
     validado: validated.has(key),
     excluido: deletes.has(key),
     edicao: edits[key] || null,
@@ -580,9 +515,8 @@ function assignmentSyncSupabase(key){
   if(!supa) return;
   const a = assignments[key];
   const [sheet, idxStr] = key.split('|');
-  const idxNum = Number(idxStr);
   supa.from('atribuicoes').upsert({
-    key, sheet, row_idx: Number.isInteger(idxNum) ? idxNum : 0,
+    key, sheet, row_idx: Number(idxStr),
     responsavel: a?a.responsavel:null,
     atribuido_por: a?a.atribuidoPor:null,
     atribuido_em: a?a.atribuidoEm:null,
@@ -624,7 +558,7 @@ function assignTask(sheet, idx, userId){
   markUserInteracting();
   const quem = ensureReviewUserName();
   if(!quem) return;
-  const key = syncKey(sheet, idx);
+  const key = sheet+'|'+idx;
   const current = assignments[key];
   const historico = current ? [...(current.historico||[]), {responsavel:current.responsavel, atribuidoPor:current.atribuidoPor, atribuidoEm:current.atribuidoEm}] : [];
   if(!userId) delete assignments[key];
@@ -648,7 +582,7 @@ function assignmentCounts(sheet){
   for(let i=0;i<n;i++){
     if(!isActive(sheet,i)) continue;
     total++;
-    const a = assignments[syncKey(sheet,i)];
+    const a = assignments[sheet+'|'+i];
     if(a && counts[a.responsavel]!==undefined) counts[a.responsavel]++;
   }
   return {counts, total};
@@ -805,52 +739,35 @@ function rebuildDuplicateAnalysis(){
   const descIdx=source.headers.findIndex(h=>/descric|descr|produto|nome/i.test(h));
   const ncmIdx=source.headers.findIndex(h=>/NCM|IPI/i.test(h));
   if(descIdx<0)return;
-  const normalize=v=>String(v??'').trim().replace(/\s+/g,' ').replace(/\|/g,' ').toUpperCase();
+  const normalize=v=>String(v??'').trim().replace(/\s+/g,' ').toUpperCase();
   const descriptionGroups=new Map(),ncmDescriptionGroups=new Map();
   for(let i=0;i<rowCount(MAIN_SHEET);i++){
     if(!isActive(MAIN_SHEET,i))continue;
     const row=getRow(MAIN_SHEET,i),description=String(row[descIdx]??'').trim(),descriptionKey=normalize(description);
     if(!descriptionKey)continue;
-    if(!descriptionGroups.has(descriptionKey))descriptionGroups.set(descriptionKey,{description,count:0,key:descriptionKey});
+    if(!descriptionGroups.has(descriptionKey))descriptionGroups.set(descriptionKey,{description,count:0});
     descriptionGroups.get(descriptionKey).count++;
     if(ncmIdx>=0){
-      const ncm=String(row[ncmIdx]??'').trim(),key=normalize(ncm)+'~'+descriptionKey;
-      if(!ncmDescriptionGroups.has(key))ncmDescriptionGroups.set(key,{ncm,description,count:0,key});
+      const ncm=String(row[ncmIdx]??'').trim(),key=normalize(ncm)+'||'+descriptionKey;
+      if(!ncmDescriptionGroups.has(key))ncmDescriptionGroups.set(key,{ncm,description,count:0});
       ncmDescriptionGroups.get(key).count++;
     }
   }
-  // chave de validação/atribuição/exclusão baseada no CONTEÚDO (descrição/NCM), não na posição:
-  // a lista acima é recalculada do zero a cada render (grupos com count>1 mudam de tamanho e
-  // de ordem conforme produtos vão sendo validados em qualquer lugar do site), então usar a
-  // posição do array como chave fazia uma validação "pular" de produto silenciosamente sempre
-  // que a lista mudava de tamanho — por isso os números divergiam entre usuários.
   if(DATA.Descricoes_Duplicadas){
-    const ordered=[...descriptionGroups.values()].filter(x=>x.count>1).sort((a,b)=>a.description.localeCompare(b.description,'pt-BR'));
     DATA.Descricoes_Duplicadas.headers=['Descricao','Quantidade'];
-    DATA.Descricoes_Duplicadas.rows=ordered.map(x=>[x.description,x.count]);
-    DATA.Descricoes_Duplicadas.rowKeys=ordered.map(x=>x.key);
+    DATA.Descricoes_Duplicadas.rows=[...descriptionGroups.values()].filter(x=>x.count>1).sort((a,b)=>a.description.localeCompare(b.description,'pt-BR')).map(x=>[x.description,x.count]);
     imported.Descricoes_Duplicadas=[];
   }
   if(DATA.NCM_Mesma_Descricao){
-    const ordered=[...ncmDescriptionGroups.values()].filter(x=>x.count>1).sort((a,b)=>a.description.localeCompare(b.description,'pt-BR')||a.ncm.localeCompare(b.ncm,'pt-BR'));
     DATA.NCM_Mesma_Descricao.headers=['Pos.IPI/NCM','Descricao','Qtd'];
-    DATA.NCM_Mesma_Descricao.rows=ordered.map(x=>[x.ncm,x.description,x.count]);
-    DATA.NCM_Mesma_Descricao.rowKeys=ordered.map(x=>x.key);
+    DATA.NCM_Mesma_Descricao.rows=[...ncmDescriptionGroups.values()].filter(x=>x.count>1).sort((a,b)=>a.description.localeCompare(b.description,'pt-BR')||a.ncm.localeCompare(b.ncm,'pt-BR')).map(x=>[x.ncm,x.description,x.count]);
     imported.NCM_Mesma_Descricao=[];
   }
-}
-// chave estável de sincronização: usa a chave por conteúdo (rowKeys) quando a aba é
-// recalculada a cada render (NCM_Mesma_Descricao/Descricoes_Duplicadas); nas demais abas
-// (linhas fixas da planilha) continua sendo "aba|posição", igual sempre foi.
-function syncKey(sheet, i){
-  const d = DATA[sheet];
-  const k = d && d.rowKeys ? d.rowKeys[i] : null;
-  return k!=null ? sheet+'|'+k : sheet+'|'+i;
 }
 
 // ===== contagem de duplicidade em tempo real =====
 function getRow(sheet, i){ return edits[sheet+'|'+i] || rawRow(sheet, i); }
-function isActive(sheet, i){ return !deletes.has(syncKey(sheet,i)); }
+function isActive(sheet, i){ return !deletes.has(sheet+'|'+i); }
 
 function computeStats(sheet){
   const d = DATA[sheet]; if(!d) return {total:0,dup:0,val:0,pend:0,filiaisDup:[]};
@@ -865,7 +782,7 @@ function computeStats(sheet){
   for(let i=0;i<n;i++){
     if(!isActive(sheet,i)) continue;
     total++;
-    if(validated.has(syncKey(sheet,i))) val++;
+    if(validated.has(sheet+'|'+i)) val++;
     const r = getRow(sheet,i);
     const key = (descIdx>=0 ? String(r[descIdx]||'').trim().toUpperCase() : '') +
                 '||' + (ncmIdx>=0 ? String(r[ncmIdx]||'').trim() : '');
@@ -1015,279 +932,25 @@ function renderPreserveState(){
 }
 
 // ===== RESUMO (cards clicáveis) =====
-// ===== filtros da tela Resumo (Filial / Status / Responsável / Busca) =====
-let resumoFilters = {filial:'', status:'', responsavel:'', q:'', periodo:'', dataDe:'', dataAte:''};
-const RESUMO_PERIODOS = [
-  {id:'hoje', label:'Hoje'},
-  {id:'7d', label:'Últimos 7 dias'},
-  {id:'30d', label:'Últimos 30 dias'},
-  {id:'mes', label:'Mês atual'},
-  {id:'mes-passado', label:'Mês passado'},
-  {id:'ano', label:'Este ano'}
-];
-function resumoAnyFilterActive(){
-  const f=resumoFilters; return !!(f.filial||f.status||f.responsavel||f.q.trim()||f.periodo);
-}
-// intervalo [inicio,fim] do período escolhido, com base na data de validação/edição
-// (timestamps) — a base de produtos não tem "data de cadastro" própria, então o
-// filtro de período olha a última atividade (validação/edição) de cada linha.
-function resumoPeriodRange(){
-  const f=resumoFilters, now=new Date();
-  const startOfDay=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate(),0,0,0,0);
-  const endOfDay=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate(),23,59,59,999);
-  if(f.periodo==='hoje') return [startOfDay(now), endOfDay(now)];
-  if(f.periodo==='7d'){ const s=new Date(now); s.setDate(s.getDate()-6); return [startOfDay(s), endOfDay(now)]; }
-  if(f.periodo==='30d'){ const s=new Date(now); s.setDate(s.getDate()-29); return [startOfDay(s), endOfDay(now)]; }
-  if(f.periodo==='mes') return [new Date(now.getFullYear(),now.getMonth(),1), endOfDay(now)];
-  if(f.periodo==='mes-passado'){ const s=new Date(now.getFullYear(),now.getMonth()-1,1); const e=new Date(now.getFullYear(),now.getMonth(),0,23,59,59,999); return [s,e]; }
-  if(f.periodo==='ano') return [new Date(now.getFullYear(),0,1), endOfDay(now)];
-  if(f.periodo==='custom' && f.dataDe && f.dataAte){
-    const de=new Date(f.dataDe+'T00:00:00'), ate=new Date(f.dataAte+'T23:59:59');
-    if(!isNaN(de) && !isNaN(ate)) return [de, ate];
-  }
-  return null;
-}
-function resumoSetPeriodo(id){
-  resumoFilters.periodo = (resumoFilters.periodo===id) ? '' : id;
-  refreshResumoBody();
-  const bar=document.getElementById('rfPeriodBar');
-  if(bar) bar.outerHTML = resumoPeriodBarHtml();
-}
-function resumoApplyCustomRange(){
-  const de=document.getElementById('rfDataDe'), ate=document.getElementById('rfDataAte');
-  resumoFilters.dataDe = de?de.value:'';
-  resumoFilters.dataAte = ate?ate.value:'';
-  resumoFilters.periodo = (resumoFilters.dataDe && resumoFilters.dataAte) ? 'custom' : '';
-  refreshResumoBody();
-  const bar=document.getElementById('rfPeriodBar');
-  if(bar) bar.outerHTML = resumoPeriodBarHtml();
-}
-function resumoPeriodBarHtml(){
-  const f=resumoFilters;
-  return `
-    <div class="toolbar" id="rfPeriodBar" style="margin-top:10px">
-      <span class="d" style="align-self:center;margin-right:2px">PERÍODO:</span>
-      ${RESUMO_PERIODOS.map(p=>`<button class="btn period-btn ${f.periodo===p.id?'active':''}" onclick="resumoSetPeriodo('${p.id}')">${p.label}</button>`).join('')}
-      <span class="d" style="align-self:center;margin:0 2px 0 10px">DE</span>
-      <input type="date" id="rfDataDe" value="${escapeHtml(f.dataDe)}" style="flex:0 0 150px">
-      <span class="d" style="align-self:center">ATÉ</span>
-      <input type="date" id="rfDataAte" value="${escapeHtml(f.dataAte)}" style="flex:0 0 150px">
-      <button class="btn" onclick="resumoApplyCustomRange()">Aplicar</button>
-    </div>`;
-}
-function resumoFilialOptions(){
-  const d=DATA[MAIN_SHEET]; if(!d) return [];
-  const filialIdx=d.headers.findIndex(h=>/filial|loja|unidade/i.test(h));
-  if(filialIdx<0) return [];
-  const set=new Set();
-  for(let i=0;i<rowCount(MAIN_SHEET);i++){
-    if(!isActive(MAIN_SHEET,i)) continue;
-    const v=String(getRow(MAIN_SHEET,i)[filialIdx]||'').trim();
-    if(v) set.add(v);
-  }
-  return [...set].sort((a,b)=>(+a||0)-(+b||0)||a.localeCompare(b,'pt-BR'));
-}
-// descrições (normalizadas) dos produtos atribuídos a um responsável, via as abas
-// NCM Mesma Descrição / Descrições Duplicadas — é a única granularidade de
-// "responsável" que existe hoje (a atribuição não é por linha da base principal).
-function resumoOwnedDescriptions(userId){
-  const set=new Set();
-  ['NCM_Mesma_Descricao','Descricoes_Duplicadas'].forEach(sheet=>{
-    const d=DATA[sheet]; if(!d) return;
-    const descIdx=d.headers.findIndex(h=>/descric|descr|produto|nome/i.test(h));
-    if(descIdx<0) return;
-    for(let i=0;i<rowCount(sheet);i++){
-      const a=assignments[syncKey(sheet,i)];
-      if(a && a.responsavel===userId){
-        const r=getRow(sheet,i);
-        set.add(String(r[descIdx]||'').trim().replace(/\s+/g,' ').toUpperCase());
-      }
-    }
-  });
-  return set;
-}
-function resumoMatchingIndexes(){
-  const d=DATA[MAIN_SHEET]; if(!d) return [];
-  const descIdx=d.headers.findIndex(h=>/descric|descr|produto|nome/i.test(h));
-  const filialIdx=d.headers.findIndex(h=>/filial|loja|unidade/i.test(h));
-  const f=resumoFilters;
-  const owned=f.responsavel?resumoOwnedDescriptions(f.responsavel):null;
-  const q=f.q.trim().toLowerCase();
-  const range=resumoPeriodRange();
-  const out=[];
-  for(let i=0;i<rowCount(MAIN_SHEET);i++){
-    if(!isActive(MAIN_SHEET,i)) continue;
-    const r=getRow(MAIN_SHEET,i);
-    if(f.filial && filialIdx>=0 && String(r[filialIdx]||'').trim()!==f.filial) continue;
-    const key=MAIN_SHEET+'|'+i;
-    const isVal=validated.has(key);
-    if(f.status==='val' && !isVal) continue;
-    if(f.status==='pend' && isVal) continue;
-    if(range){
-      const ts=timestamps[key];
-      if(!ts) continue;
-      const t=new Date(ts).getTime();
-      if(t<range[0].getTime() || t>range[1].getTime()) continue;
-    }
-    if(owned && descIdx>=0 && !owned.has(String(r[descIdx]||'').trim().replace(/\s+/g,' ').toUpperCase())) continue;
-    if(q && r.join(' ').toLowerCase().indexOf(q)===-1) continue;
-    out.push(i);
-  }
-  return out;
-}
-// mini-gráfico com a quantidade de validações por dia nos últimos 7 dias (dado real,
-// a partir de timestamps[] — não é decorativo).
-function resumoValidatedSparkline(){
-  const days=7;
-  const buckets=new Array(days).fill(0);
-  const now=new Date(); now.setHours(0,0,0,0);
-  validated.forEach(key=>{
-    if(!key.startsWith(MAIN_SHEET+'|')) return;
-    const ts=timestamps[key]; if(!ts) return;
-    const d=new Date(ts); d.setHours(0,0,0,0);
-    const diffDays=Math.round((now-d)/86400000);
-    if(diffDays>=0 && diffDays<days) buckets[days-1-diffDays]++;
-  });
-  const max=Math.max(1,...buckets);
-  const w=160,h=28,stepX=w/(days-1);
-  const pts=buckets.map((v,i)=>`${(i*stepX).toFixed(1)},${(h-(v/max)*(h-4)-2).toFixed(1)}`).join(' ');
-  return `<svg class="metric-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="#53e5ad" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-}
-function resumoClearFilters(){
-  resumoFilters={filial:'',status:'',responsavel:'',q:'',periodo:'',dataDe:'',dataAte:''};
-  if(current==='resumo') renderResumo(document.getElementById('main'));
-}
-function resumoFilterBarHtml(){
-  const filiais=resumoFilialOptions();
-  return `
-    <div class="panel resumo-filterbar">
-      <div class="toolbar">
-        <select id="rfFilial" onchange="resumoFilters.filial=this.value;refreshResumoBody()">
-          <option value="">Todas as filiais</option>
-          ${filiais.map(f=>`<option value="${escapeHtml(f)}" ${resumoFilters.filial===f?'selected':''}>Filial ${escapeHtml(f)}</option>`).join('')}
-        </select>
-        <select id="rfStatus" onchange="resumoFilters.status=this.value;refreshResumoBody()">
-          <option value="">Validados e pendentes</option>
-          <option value="val" ${resumoFilters.status==='val'?'selected':''}>Somente validados</option>
-          <option value="pend" ${resumoFilters.status==='pend'?'selected':''}>Somente pendentes</option>
-        </select>
-        <select id="rfResp" onchange="resumoFilters.responsavel=this.value;refreshResumoBody()">
-          <option value="">Todos os responsáveis</option>
-          ${TASK_USERS.map(u=>`<option value="${u.id}" ${resumoFilters.responsavel===u.id?'selected':''}>${u.emoji} ${escapeHtml(u.nome)}</option>`).join('')}
-        </select>
-        <input type="text" id="rfBusca" placeholder="🔍 Busca livre (código / descrição)" value="${escapeHtml(resumoFilters.q)}" oninput="resumoFilters.q=this.value;refreshResumoBody()" style="flex:1 1 220px">
-        <button class="btn gray" onclick="resumoClearFilters()">✕ Limpar</button>
-      </div>
-      ${resumoPeriodBarHtml()}
-      <div class="d" id="rfCount" style="margin-top:8px"></div>
-    </div>`;
-}
-function resumoFilialStats(allowedSet){
-  const d=DATA[MAIN_SHEET]; if(!d) return [];
-  const filialIdx=d.headers.findIndex(h=>/filial|loja|unidade/i.test(h));
-  if(filialIdx<0) return [];
-  const map=new Map();
-  for(let i=0;i<rowCount(MAIN_SHEET);i++){
-    if(!isActive(MAIN_SHEET,i)) continue;
-    if(allowedSet && !allowedSet.has(i)) continue;
-    const r=getRow(MAIN_SHEET,i), f=String(r[filialIdx]||'—').trim()||'—';
-    if(!map.has(f)) map.set(f,{val:0,pend:0});
-    const o=map.get(f);
-    if(validated.has(MAIN_SHEET+'|'+i)) o.val++; else o.pend++;
-  }
-  return [...map.entries()].map(([filial,v])=>({filial,val:v.val,pend:v.pend,total:v.val+v.pend}))
-    .sort((a,b)=>b.total-a.total).slice(0,6);
-}
-function resumoResponsavelCounts(){
-  const totals={}; TASK_USERS.forEach(u=>totals[u.id]=0);
-  ['NCM_Mesma_Descricao','Descricoes_Duplicadas'].forEach(sheet=>{
-    if(!DATA[sheet]) return;
-    const {counts}=assignmentCounts(sheet);
-    TASK_USERS.forEach(u=>totals[u.id]+=(counts[u.id]||0));
-  });
-  return TASK_USERS.map(u=>({...u,count:totals[u.id]}));
-}
-function resumoChartsHtml(allowedSet){
-  const filiais=resumoFilialStats(allowedSet);
-  const maxVal=Math.max(1,...filiais.map(f=>Math.max(f.val,f.pend)));
-  const bars=filiais.length?filiais.map(f=>`
-    <div class="exec-bar-group">
-      <div class="exec-bar" style="height:${Math.max(3,Math.round(f.val*100/maxVal))}%;background:linear-gradient(180deg,#6fe3b4,#1ea36f)" title="${f.val} validados"></div>
-      <div class="exec-bar" style="height:${Math.max(3,Math.round(f.pend*100/maxVal))}%;background:linear-gradient(180deg,#ffcf86,#c98a1f)" title="${f.pend} pendentes"></div>
-    </div>`).join('') : '';
-  const barLabels=filiais.map(f=>`<span>${escapeHtml(f.filial)}</span>`).join('');
-
-  const resp=resumoResponsavelCounts();
-  const totalResp=resp.reduce((s,u)=>s+u.count,0)||1;
-  let acc=0;
-  const segs=resp.map(u=>{
-    const from=acc/totalResp*100; acc+=u.count; const to=acc/totalResp*100;
-    return `${u.cor} ${from}% ${to}%`;
-  }).join(',');
-  const legend=resp.map(u=>`<div><i style="background:${u.cor}"></i><span>${escapeHtml(u.nome)}</span><b>${u.count.toLocaleString('pt-BR')}</b></div>`).join('');
-
-  return `
-    <div class="exec-dark-charts">
-      <div class="exec-dark-panel">
-        <h2>Validados vs Pendentes por Filial</h2>
-        <div class="exec-bar-legend"><span><i style="background:#53e5ad"></i>Validados</span><span><i style="background:#f3b94d"></i>Pendentes</span></div>
-        <div class="exec-dark-sub">Distribuição por filial de origem</div>
-        ${filiais.length?`<div class="exec-bars">${bars}</div><div class="exec-bar-labels">${barLabels}</div>`:'<p style="color:#64779a;font-size:13px">Sem dados de filial disponíveis.</p>'}
-      </div>
-      <div class="exec-dark-panel">
-        <h2>Distribuição por Responsável</h2>
-        <div class="exec-dark-sub">Tarefas atribuídas na base</div>
-        <div class="resumo-donut-wrap">
-          <div class="resumo-donut" style="background:conic-gradient(${segs || '#1c2a40 0% 100%'})">
-            <div class="resumo-donut-hole"><b>${totalResp.toLocaleString('pt-BR')}</b><small>atribuídos</small></div>
-          </div>
-        </div>
-        <div class="exec-legend-list">${legend}</div>
-      </div>
-    </div>`;
-}
 function renderResumo(m){
+  const st=computeStats(MAIN_SHEET), pct=st.total?Math.round(st.val*100/st.total):0;
   const now=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
-  m.innerHTML=`
-    <div class="page-title"><div><div class="page-kicker">Visão executiva</div><h2>Panorama da base cadastral</h2><p>Indicadores consolidados para acompanhamento da revitalização.</p></div><div class="date-badge">Atualizado em ${now}</div></div>
-    ${resumoFilterBarHtml()}
-    <div id="resumoBody"></div>`;
-  refreshResumoBody();
-}
-function refreshResumoBody(){
-  const body=document.getElementById('resumoBody');
-  if(!body) return;
-  const st=computeStats(MAIN_SHEET), pctOverall=st.total?Math.round(st.val*100/st.total):0;
   const totalBase=rowCount(MAIN_SHEET), desativados=Math.max(0,totalBase-st.total);
   const separados=(typeof window.selectedForDeletion!=='undefined')?window.selectedForDeletion.size:0;
   const pendAjustado=Math.max(0,st.pend-separados);
-  const pctBase=totalBase?Math.round(st.total*100/totalBase):0;
-  const pctSep=st.total?Math.round(separados*100/st.total):0;
-
-  const active=resumoAnyFilterActive();
-  const idxs=active?resumoMatchingIndexes():null;
-  const allowedSet=idxs?new Set(idxs):null;
-  const valShown=active?idxs.filter(i=>validated.has(MAIN_SHEET+'|'+i)).length:st.val;
-  const totalShown=active?idxs.length:st.total;
-  const pendShown=active?(totalShown-valShown):pendAjustado;
-  const pctShown=totalShown?Math.round(valShown*100/totalShown):0;
-  const pctPendShown=totalShown?Math.round(pendShown*100/totalShown):0;
-
-  body.innerHTML=`
+  m.innerHTML=`
+    <div class="page-title"><div><div class="page-kicker">Visão executiva</div><h2>Panorama da base cadastral</h2><p>Indicadores consolidados para acompanhamento da revitalização.</p></div><div class="date-badge">Atualizado em ${now}</div></div>
     <div class="cards cards-cols-5">
-      <div class="card clk" onclick="goTo('${MAIN_SHEET}')"><div class="card-top"><h3>Total na base</h3><span class="metric-icon">🗂️</span></div><div class="v">${totalBase.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> ${desativados.toLocaleString('pt-BR')} desativado(s)</div><div class="metric-bar"><div class="metric-bar-fill" style="width:100%"></div></div></div>
-      <div class="card clk" onclick="goTo('${MAIN_SHEET}')"><div class="card-top"><h3>Produtos ativos</h3><span class="metric-icon">▦</span></div><div class="v">${st.total.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> Base consolidada</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pctBase}%"></div></div></div>
-      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyValidated:true})"><div class="card-top"><h3>Validados${active?' (filtro)':''}</h3><span class="metric-icon">✓</span></div><div class="v">${valShown.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--verde)"></i> ${pctShown}% ${active?'do filtro':'concluído'}</div>${resumoValidatedSparkline()}</div>
-      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})"><div class="card-top"><h3>Pendentes${active?' (filtro)':''}</h3><span class="metric-icon">◷</span></div><div class="v">${pendShown.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--ambar)"></i> ${pctPendShown}% ${active?'do filtro':'aguardando análise'}</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pctPendShown}%"></div></div></div>
-      <div class="card clk" onclick="goTo('deactivationReport')"><div class="card-top"><h3>Separados p/ desativação</h3><span class="metric-icon">🗃️</span></div><div class="v">${separados.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:#8a5a00"></i> No Relatório de Desativação</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pctSep}%"></div></div></div>
+      <div class="card clk" onclick="goTo('${MAIN_SHEET}')"><div class="card-top"><h3>Total na base</h3><span class="metric-icon">🗂️</span></div><div class="v">${totalBase.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> ${desativados.toLocaleString('pt-BR')} desativado(s)</div></div>
+      <div class="card clk" onclick="goTo('${MAIN_SHEET}')"><div class="card-top"><h3>Produtos ativos</h3><span class="metric-icon">▦</span></div><div class="v">${st.total.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> Base consolidada</div></div>
+      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyValidated:true})"><div class="card-top"><h3>Validados</h3><span class="metric-icon">✓</span></div><div class="v">${st.val.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--verde)"></i> ${pct}% concluído</div></div>
+      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})"><div class="card-top"><h3>Pendentes</h3><span class="metric-icon">◷</span></div><div class="v">${pendAjustado.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--ambar)"></i> Aguardando análise</div></div>
+      <div class="card clk" onclick="goTo('deactivationReport')"><div class="card-top"><h3>Separados p/ desativação</h3><span class="metric-icon">🗃️</span></div><div class="v">${separados.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:#8a5a00"></i> No Relatório de Desativação</div></div>
     </div>
     <div class="exec-grid">
-      <section class="panel hero-panel"><div class="hero-copy"><div class="page-kicker">Programa de qualidade cadastral</div><h2>Decisões mais rápidas começam com dados confiáveis</h2><p>Centralize a análise, priorize duplicidades e acompanhe a validação da base em tempo real. Os indicadores são recalculados automaticamente a cada atualização.</p><div class="hero-actions"><button class="quick-btn primary" onclick="goTo('dashboard')">Abrir dashboard</button><button class="quick-btn" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})">Revisar pendências</button></div></div><div class="progress-ring" style="--p:${pctOverall}"><div><strong>${pctOverall}%</strong><span>concluído</span></div></div></section>
+      <section class="panel hero-panel"><div class="hero-copy"><div class="page-kicker">Programa de qualidade cadastral</div><h2>Decisões mais rápidas começam com dados confiáveis</h2><p>Centralize a análise, priorize duplicidades e acompanhe a validação da base em tempo real. Os indicadores são recalculados automaticamente a cada atualização.</p><div class="hero-actions"><button class="quick-btn primary" onclick="goTo('dashboard')">Abrir dashboard</button><button class="quick-btn" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})">Revisar pendências</button></div></div><div class="progress-ring" style="--p:${pct}"><div><strong>${pct}%</strong><span>concluído</span></div></div></section>
       <section class="panel"><h2>Pontos de atenção</h2><div class="attention-item"><div><strong>Duplicidades identificadas</strong><span>Filiais ${st.filiaisDup.join(', ')||'sem ocorrência'}</span></div><span class="attention-value">${st.dup.toLocaleString('pt-BR')}</span></div><div class="attention-item"><div><strong>Saldo para validação</strong><span>Itens ainda não concluídos</span></div><span class="attention-value" style="color:var(--ambar)!important">${st.pend.toLocaleString('pt-BR')}</span></div></section>
-    </div>
-    ${resumoChartsHtml(allowedSet)}`;
-  const cnt=document.getElementById('rfCount');
-  if(cnt) cnt.textContent = active ? `${idxs.length.toLocaleString('pt-BR')} registros encontrados` : `${totalBase.toLocaleString('pt-BR')} registros`;
+    </div>`;
 }
 
 // ===== DASHBOARD em tempo real =====
@@ -1371,15 +1034,12 @@ function renderSheet(m, sheet){
   const init = pendingFilter || {};
   pendingFilter = null;
 
-  const dupPct = st.total ? Math.round(st.dup*100/st.total) : 0;
-  const valPct2 = st.total ? Math.round(st.val*100/st.total) : 0;
-  const pendPct2 = st.total ? Math.round(st.pend*100/st.total) : 0;
   m.innerHTML = `
     <div class="cards">
-      <div class="card clk" onclick="setQuick('all')"><div class="card-top"><h3>Total</h3><span class="metric-icon">📋</span></div><div class="v">${st.total.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> Registros na aba</div><div class="metric-bar"><div class="metric-bar-fill" style="width:100%"></div></div></div>
-      <div class="card clk" onclick="setQuick('dup')"><div class="card-top"><h3>Repetidos</h3><span class="metric-icon">🔁</span></div><div class="v">${st.dup.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--vermelho)"></i> ${dupPct}% do total</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${dupPct}%"></div></div></div>
-      <div class="card clk" onclick="setQuick('val')"><div class="card-top"><h3>Validados</h3><span class="metric-icon">✓</span></div><div class="v">${st.val.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--verde)"></i> ${valPct2}% concluído</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${valPct2}%"></div></div></div>
-      <div class="card clk" onclick="setQuick('pend')"><div class="card-top"><h3>Pendentes</h3><span class="metric-icon">◷</span></div><div class="v">${st.pend.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--ambar)"></i> ${pendPct2}% aguardando</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pendPct2}%"></div></div></div>
+      <div class="card clk" onclick="setQuick('all')"><h3>Total</h3><div class="v">${st.total.toLocaleString('pt-BR')}</div></div>
+      <div class="card clk" onclick="setQuick('dup')"><h3>Repetidos</h3><div class="v">${st.dup.toLocaleString('pt-BR')}</div></div>
+      <div class="card clk" onclick="setQuick('val')"><h3>Validados</h3><div class="v">${st.val.toLocaleString('pt-BR')}</div></div>
+      <div class="card clk" onclick="setQuick('pend')"><h3>Pendentes</h3><div class="v">${st.pend.toLocaleString('pt-BR')}</div></div>
     </div>
     ${assignmentPanelHtml(sheet).replace('<div class="panel assign-panel">','<div class="panel assign-panel" id="assignPanelSlot">')}
     <div class="panel">
@@ -1467,11 +1127,11 @@ function drawRows(sheet){
   const n = rowCount(sheet);
   const rowOrder=Array.from({length:n},(_,i)=>i);
   if(sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas'){
-    rowOrder.sort((a,b)=>Number(validated.has(syncKey(sheet,a)))-Number(validated.has(syncKey(sheet,b)))||a-b);
+    rowOrder.sort((a,b)=>Number(validated.has(sheet+'|'+a))-Number(validated.has(sheet+'|'+b))||a-b);
   }
   for(const i of rowOrder){
-    if(deletes.has(syncKey(sheet,i))) continue;
-    const key = syncKey(sheet,i);
+    if(deletes.has(sheet+'|'+i)) continue;
+    const key = sheet+'|'+i;
     const row = getRow(sheet,i);
     if(f.q && row.join(' ').toLowerCase().indexOf(f.q)===-1) continue;
     if(f.filial && f.filialIdx>=0 && String(row[f.filialIdx]??'').toLowerCase().indexOf(f.filial)===-1) continue;
@@ -1535,7 +1195,7 @@ function drawRows(sheet){
 }
 
 function toggleValidate(sheet, idx){
-  const key = syncKey(sheet, idx);
+  const key = sheet+'|'+idx;
   const shouldValidate=!validated.has(key);
   if(shouldValidate) validated.add(key);
   else validated.delete(key);
@@ -1560,15 +1220,6 @@ function renderSheetCardsOnly(sheet){
     vs[1].textContent = st.dup.toLocaleString('pt-BR');
     vs[2].textContent = st.val.toLocaleString('pt-BR');
     vs[3].textContent = st.pend.toLocaleString('pt-BR');
-  }
-  const bars = cards.querySelectorAll('.metric-bar-fill');
-  if(bars.length>=4 && vs.length>=4){
-    const dupPct = st.total ? Math.round(st.dup*100/st.total) : 0;
-    const valPct = st.total ? Math.round(st.val*100/st.total) : 0;
-    const pendPct = st.total ? Math.round(st.pend*100/st.total) : 0;
-    bars[1].style.width = dupPct+'%';
-    bars[2].style.width = valPct+'%';
-    bars[3].style.width = pendPct+'%';
   }
 }
 
@@ -1915,9 +1566,8 @@ function deleteCurrent(){
 }
 function deleteRow(sheet, idx){
   if(!confirm('Excluir este registro?')) return;
-  const key = syncKey(sheet, idx);
-  deletes.add(key);
-  touchTimestamp(key);
+  deletes.add(sheet+'|'+idx);
+  touchTimestamp(sheet+'|'+idx);
   persist(); render();
 }
 
@@ -1929,7 +1579,7 @@ function bulkDeleteDuplicates(sheet){
   let dupCount = 0;
   const n = rowCount(sheet);
   for(let i=0;i<n;i++){
-    if(deletes.has(syncKey(sheet,i))) continue;
+    if(deletes.has(sheet+'|'+i)) continue;
     const r = getRow(sheet,i);
     const key = descIdx>=0 && ncmIdx>=0 ? (r[descIdx]+'||'+r[ncmIdx]) : r.join('||');
     if(seen.has(key)) dupCount++; else seen.set(key,i);
@@ -1938,10 +1588,10 @@ function bulkDeleteDuplicates(sheet){
   if(!confirm(`Excluir ${dupCount} linha(s) duplicada(s)? (mantém a primeira ocorrência)`)) return;
   seen.clear();
   for(let i=0;i<n;i++){
-    if(deletes.has(syncKey(sheet,i))) continue;
+    if(deletes.has(sheet+'|'+i)) continue;
     const r = getRow(sheet,i);
     const key = descIdx>=0 && ncmIdx>=0 ? (r[descIdx]+'||'+r[ncmIdx]) : r.join('||');
-    if(seen.has(key)) { const k=syncKey(sheet,i); deletes.add(k); touchTimestamp(k); } else seen.set(key,i);
+    if(seen.has(key)) { deletes.add(sheet+'|'+i); touchTimestamp(sheet+'|'+i); } else seen.set(key,i);
   }
   persist(); render();
 }
@@ -2176,7 +1826,7 @@ function buildSheetExport(sheet, onlyChanged){
   const out = [headers];
   const n = rowCount(sheet);
   for(let i=0;i<n;i++){
-    const key = syncKey(sheet,i);
+    const key = sheet+'|'+i;
     const valTxt = validated.has(key)?'VALIDADO':'PENDENTE';
     const isImported = i >= d.rows.length;
     if(deletes.has(key)){
@@ -2482,15 +2132,15 @@ subscribeAssignmentsRealtime();
 // achar (por engano) que não há nada a migrar de importações antigas feitas só aqui.
 loadImportedFromDB().finally(()=>{ loadImportedFromSupabase(); subscribeImportedRealtime(); });
 // reforço: revalida com o banco periodicamente, caso o Realtime não entregue algum evento
-setInterval(loadStateFromSupabase, 90000);
-setInterval(loadAssignmentsFromSupabase, 1800000);
-setInterval(loadImportedFromSupabase, 1800000);
+setInterval(loadStateFromSupabase, 30000);
+setInterval(loadAssignmentsFromSupabase, 30000);
+setInterval(loadImportedFromSupabase, 30000);
 // auto-refresh do dashboard em tempo real
 setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exec-updated');if(el)el.textContent='Atualizado em '+new Date().toLocaleString('pt-BR');}},15000);
 // auto-refresh da aba Protheus (status visual em tempo real)
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
 </script>
 
-<script src="duplicidades-review.js?v=20261015-synckey"></script>
-<script src="tema-relogio.js?v=20261015-sempre-escuro"></script>
+<script src="duplicidades-review.js?v=20261013-clockfix"></script>
+<script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
 </body></html>
