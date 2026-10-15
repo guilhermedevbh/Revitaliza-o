@@ -2160,6 +2160,32 @@ setInterval(loadImportedFromSupabase, 30000);
 setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exec-updated');if(el)el.textContent='Atualizado em '+new Date().toLocaleString('pt-BR');}},15000);
 // auto-refresh da aba Protheus (status visual em tempo real)
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
+
+// ===== aviso de versão desatualizada =====
+// o navegador às vezes guarda em cache uma versão antiga do próprio HTML (o arquivo
+// principal não tem "quebra de cache" como os .js/.css têm via ?v=...), fazendo um
+// usuário ver números bem diferentes dos outros (ex.: lógica de cálculo antiga rodando).
+// Isso checa periodicamente um arquivo leve (version.txt, sem custo de banco de dados)
+// e avisa com um banner quando há uma versão mais nova publicada.
+const APP_VERSION = '2026-10-15-1830';
+async function checkForNewVersion(){
+  try{
+    const res = await fetch('version.txt?t='+Date.now(), {cache:'no-store'});
+    if(!res.ok) return;
+    const remote = (await res.text()).trim();
+    if(remote && remote !== APP_VERSION) showUpdateBanner();
+  }catch(e){}
+}
+function showUpdateBanner(){
+  if(document.getElementById('updateBanner')) return;
+  const b = document.createElement('div');
+  b.id = 'updateBanner';
+  b.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:999;background:#123e8c;color:#fff;padding:12px 18px;display:flex;align-items:center;justify-content:center;gap:14px;font-size:13px;font-weight:700;box-shadow:0 -6px 20px rgba(0,0,0,.25)';
+  b.innerHTML = '🔄 Uma nova versão do site está disponível — atualize para ver as informações certas.<button style="background:#fff;color:#123e8c;border:0;border-radius:8px;padding:8px 14px;font-weight:800;cursor:pointer" onclick="location.reload()">Atualizar agora</button>';
+  document.body.appendChild(b);
+}
+setInterval(checkForNewVersion, 180000);
+checkForNewVersion();
 </script>
 
 <script src="duplicidades-review.js?v=20261015-synckey2"></script>
