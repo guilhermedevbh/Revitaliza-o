@@ -5,7 +5,7 @@
 <title>RevitaCad</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" href="logo-emtel-transparente.png">
-<script>try{document.documentElement.dataset.theme=localStorage.getItem('emtel_theme')||((window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light')}catch(e){document.documentElement.dataset.theme='light'}</script>
+<script>document.documentElement.dataset.theme='dark';</script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
@@ -1002,13 +1002,99 @@ function renderPreserveState(){
 }
 
 // ===== RESUMO (cards clicáveis) =====
-function resumoFilialStats(){
+// ===== filtros da tela Resumo (Filial / Status / Responsável / Busca) =====
+let resumoFilters = {filial:'', status:'', responsavel:'', q:''};
+function resumoAnyFilterActive(){
+  const f=resumoFilters; return !!(f.filial||f.status||f.responsavel||f.q.trim());
+}
+function resumoFilialOptions(){
+  const d=DATA[MAIN_SHEET]; if(!d) return [];
+  const filialIdx=d.headers.findIndex(h=>/filial|loja|unidade/i.test(h));
+  if(filialIdx<0) return [];
+  const set=new Set();
+  for(let i=0;i<rowCount(MAIN_SHEET);i++){
+    if(!isActive(MAIN_SHEET,i)) continue;
+    const v=String(getRow(MAIN_SHEET,i)[filialIdx]||'').trim();
+    if(v) set.add(v);
+  }
+  return [...set].sort((a,b)=>(+a||0)-(+b||0)||a.localeCompare(b,'pt-BR'));
+}
+// descrições (normalizadas) dos produtos atribuídos a um responsável, via as abas
+// NCM Mesma Descrição / Descrições Duplicadas — é a única granularidade de
+// "responsável" que existe hoje (a atribuição não é por linha da base principal).
+function resumoOwnedDescriptions(userId){
+  const set=new Set();
+  ['NCM_Mesma_Descricao','Descricoes_Duplicadas'].forEach(sheet=>{
+    const d=DATA[sheet]; if(!d) return;
+    const descIdx=d.headers.findIndex(h=>/descric|descr|produto|nome/i.test(h));
+    if(descIdx<0) return;
+    for(let i=0;i<rowCount(sheet);i++){
+      const a=assignments[syncKey(sheet,i)];
+      if(a && a.responsavel===userId){
+        const r=getRow(sheet,i);
+        set.add(String(r[descIdx]||'').trim().replace(/\s+/g,' ').toUpperCase());
+      }
+    }
+  });
+  return set;
+}
+function resumoMatchingIndexes(){
+  const d=DATA[MAIN_SHEET]; if(!d) return [];
+  const descIdx=d.headers.findIndex(h=>/descric|descr|produto|nome/i.test(h));
+  const filialIdx=d.headers.findIndex(h=>/filial|loja|unidade/i.test(h));
+  const f=resumoFilters;
+  const owned=f.responsavel?resumoOwnedDescriptions(f.responsavel):null;
+  const q=f.q.trim().toLowerCase();
+  const out=[];
+  for(let i=0;i<rowCount(MAIN_SHEET);i++){
+    if(!isActive(MAIN_SHEET,i)) continue;
+    const r=getRow(MAIN_SHEET,i);
+    if(f.filial && filialIdx>=0 && String(r[filialIdx]||'').trim()!==f.filial) continue;
+    const isVal=validated.has(MAIN_SHEET+'|'+i);
+    if(f.status==='val' && !isVal) continue;
+    if(f.status==='pend' && isVal) continue;
+    if(owned && descIdx>=0 && !owned.has(String(r[descIdx]||'').trim().replace(/\s+/g,' ').toUpperCase())) continue;
+    if(q && r.join(' ').toLowerCase().indexOf(q)===-1) continue;
+    out.push(i);
+  }
+  return out;
+}
+function resumoClearFilters(){
+  resumoFilters={filial:'',status:'',responsavel:'',q:''};
+  if(current==='resumo') renderResumo(document.getElementById('main'));
+}
+function resumoFilterBarHtml(){
+  const filiais=resumoFilialOptions();
+  return `
+    <div class="panel resumo-filterbar">
+      <div class="toolbar">
+        <select id="rfFilial" onchange="resumoFilters.filial=this.value;refreshResumoBody()">
+          <option value="">Todas as filiais</option>
+          ${filiais.map(f=>`<option value="${escapeHtml(f)}" ${resumoFilters.filial===f?'selected':''}>Filial ${escapeHtml(f)}</option>`).join('')}
+        </select>
+        <select id="rfStatus" onchange="resumoFilters.status=this.value;refreshResumoBody()">
+          <option value="">Validados e pendentes</option>
+          <option value="val" ${resumoFilters.status==='val'?'selected':''}>Somente validados</option>
+          <option value="pend" ${resumoFilters.status==='pend'?'selected':''}>Somente pendentes</option>
+        </select>
+        <select id="rfResp" onchange="resumoFilters.responsavel=this.value;refreshResumoBody()">
+          <option value="">Todos os responsáveis</option>
+          ${TASK_USERS.map(u=>`<option value="${u.id}" ${resumoFilters.responsavel===u.id?'selected':''}>${u.emoji} ${escapeHtml(u.nome)}</option>`).join('')}
+        </select>
+        <input type="text" id="rfBusca" placeholder="🔍 Busca livre (código / descrição)" value="${escapeHtml(resumoFilters.q)}" oninput="resumoFilters.q=this.value;refreshResumoBody()" style="flex:1 1 220px">
+        <button class="btn gray" onclick="resumoClearFilters()">✕ Limpar</button>
+      </div>
+      <div class="d" id="rfCount" style="margin-top:8px"></div>
+    </div>`;
+}
+function resumoFilialStats(allowedSet){
   const d=DATA[MAIN_SHEET]; if(!d) return [];
   const filialIdx=d.headers.findIndex(h=>/filial|loja|unidade/i.test(h));
   if(filialIdx<0) return [];
   const map=new Map();
   for(let i=0;i<rowCount(MAIN_SHEET);i++){
     if(!isActive(MAIN_SHEET,i)) continue;
+    if(allowedSet && !allowedSet.has(i)) continue;
     const r=getRow(MAIN_SHEET,i), f=String(r[filialIdx]||'—').trim()||'—';
     if(!map.has(f)) map.set(f,{val:0,pend:0});
     const o=map.get(f);
@@ -1026,8 +1112,8 @@ function resumoResponsavelCounts(){
   });
   return TASK_USERS.map(u=>({...u,count:totals[u.id]}));
 }
-function resumoChartsHtml(){
-  const filiais=resumoFilialStats();
+function resumoChartsHtml(allowedSet){
+  const filiais=resumoFilialStats(allowedSet);
   const maxVal=Math.max(1,...filiais.map(f=>Math.max(f.val,f.pend)));
   const bars=filiais.length?filiais.map(f=>`
     <div class="exec-bar-group">
@@ -1066,28 +1152,47 @@ function resumoChartsHtml(){
     </div>`;
 }
 function renderResumo(m){
-  const st=computeStats(MAIN_SHEET), pct=st.total?Math.round(st.val*100/st.total):0;
   const now=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+  m.innerHTML=`
+    <div class="page-title"><div><div class="page-kicker">Visão executiva</div><h2>Panorama da base cadastral</h2><p>Indicadores consolidados para acompanhamento da revitalização.</p></div><div class="date-badge">Atualizado em ${now}</div></div>
+    ${resumoFilterBarHtml()}
+    <div id="resumoBody"></div>`;
+  refreshResumoBody();
+}
+function refreshResumoBody(){
+  const body=document.getElementById('resumoBody');
+  if(!body) return;
+  const st=computeStats(MAIN_SHEET), pctOverall=st.total?Math.round(st.val*100/st.total):0;
   const totalBase=rowCount(MAIN_SHEET), desativados=Math.max(0,totalBase-st.total);
   const separados=(typeof window.selectedForDeletion!=='undefined')?window.selectedForDeletion.size:0;
   const pendAjustado=Math.max(0,st.pend-separados);
   const pctBase=totalBase?Math.round(st.total*100/totalBase):0;
-  const pctPendAj=st.total?Math.round(pendAjustado*100/st.total):0;
   const pctSep=st.total?Math.round(separados*100/st.total):0;
-  m.innerHTML=`
-    <div class="page-title"><div><div class="page-kicker">Visão executiva</div><h2>Panorama da base cadastral</h2><p>Indicadores consolidados para acompanhamento da revitalização.</p></div><div class="date-badge">Atualizado em ${now}</div></div>
+
+  const active=resumoAnyFilterActive();
+  const idxs=active?resumoMatchingIndexes():null;
+  const allowedSet=idxs?new Set(idxs):null;
+  const valShown=active?idxs.filter(i=>validated.has(MAIN_SHEET+'|'+i)).length:st.val;
+  const totalShown=active?idxs.length:st.total;
+  const pendShown=active?(totalShown-valShown):pendAjustado;
+  const pctShown=totalShown?Math.round(valShown*100/totalShown):0;
+  const pctPendShown=totalShown?Math.round(pendShown*100/totalShown):0;
+
+  body.innerHTML=`
     <div class="cards cards-cols-5">
       <div class="card clk" onclick="goTo('${MAIN_SHEET}')"><div class="card-top"><h3>Total na base</h3><span class="metric-icon">🗂️</span></div><div class="v">${totalBase.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> ${desativados.toLocaleString('pt-BR')} desativado(s)</div><div class="metric-bar"><div class="metric-bar-fill" style="width:100%"></div></div></div>
       <div class="card clk" onclick="goTo('${MAIN_SHEET}')"><div class="card-top"><h3>Produtos ativos</h3><span class="metric-icon">▦</span></div><div class="v">${st.total.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> Base consolidada</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pctBase}%"></div></div></div>
-      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyValidated:true})"><div class="card-top"><h3>Validados</h3><span class="metric-icon">✓</span></div><div class="v">${st.val.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--verde)"></i> ${pct}% concluído</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pct}%"></div></div></div>
-      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})"><div class="card-top"><h3>Pendentes</h3><span class="metric-icon">◷</span></div><div class="v">${pendAjustado.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--ambar)"></i> Aguardando análise</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pctPendAj}%"></div></div></div>
+      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyValidated:true})"><div class="card-top"><h3>Validados${active?' (filtro)':''}</h3><span class="metric-icon">✓</span></div><div class="v">${valShown.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--verde)"></i> ${pctShown}% ${active?'do filtro':'concluído'}</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pctShown}%"></div></div></div>
+      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})"><div class="card-top"><h3>Pendentes${active?' (filtro)':''}</h3><span class="metric-icon">◷</span></div><div class="v">${pendShown.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--ambar)"></i> ${pctPendShown}% ${active?'do filtro':'aguardando análise'}</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pctPendShown}%"></div></div></div>
       <div class="card clk" onclick="goTo('deactivationReport')"><div class="card-top"><h3>Separados p/ desativação</h3><span class="metric-icon">🗃️</span></div><div class="v">${separados.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:#8a5a00"></i> No Relatório de Desativação</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pctSep}%"></div></div></div>
     </div>
     <div class="exec-grid">
-      <section class="panel hero-panel"><div class="hero-copy"><div class="page-kicker">Programa de qualidade cadastral</div><h2>Decisões mais rápidas começam com dados confiáveis</h2><p>Centralize a análise, priorize duplicidades e acompanhe a validação da base em tempo real. Os indicadores são recalculados automaticamente a cada atualização.</p><div class="hero-actions"><button class="quick-btn primary" onclick="goTo('dashboard')">Abrir dashboard</button><button class="quick-btn" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})">Revisar pendências</button></div></div><div class="progress-ring" style="--p:${pct}"><div><strong>${pct}%</strong><span>concluído</span></div></div></section>
+      <section class="panel hero-panel"><div class="hero-copy"><div class="page-kicker">Programa de qualidade cadastral</div><h2>Decisões mais rápidas começam com dados confiáveis</h2><p>Centralize a análise, priorize duplicidades e acompanhe a validação da base em tempo real. Os indicadores são recalculados automaticamente a cada atualização.</p><div class="hero-actions"><button class="quick-btn primary" onclick="goTo('dashboard')">Abrir dashboard</button><button class="quick-btn" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})">Revisar pendências</button></div></div><div class="progress-ring" style="--p:${pctOverall}"><div><strong>${pctOverall}%</strong><span>concluído</span></div></div></section>
       <section class="panel"><h2>Pontos de atenção</h2><div class="attention-item"><div><strong>Duplicidades identificadas</strong><span>Filiais ${st.filiaisDup.join(', ')||'sem ocorrência'}</span></div><span class="attention-value">${st.dup.toLocaleString('pt-BR')}</span></div><div class="attention-item"><div><strong>Saldo para validação</strong><span>Itens ainda não concluídos</span></div><span class="attention-value" style="color:var(--ambar)!important">${st.pend.toLocaleString('pt-BR')}</span></div></section>
     </div>
-    ${resumoChartsHtml()}`;
+    ${resumoChartsHtml(allowedSet)}`;
+  const cnt=document.getElementById('rfCount');
+  if(cnt) cnt.textContent = active ? `${idxs.length.toLocaleString('pt-BR')} registros encontrados` : `${totalBase.toLocaleString('pt-BR')} registros`;
 }
 
 // ===== DASHBOARD em tempo real =====
@@ -2292,5 +2397,5 @@ setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementByI
 </script>
 
 <script src="duplicidades-review.js?v=20261015-synckey"></script>
-<script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
+<script src="tema-relogio.js?v=20261015-sempre-escuro"></script>
 </body></html>
