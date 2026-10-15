@@ -260,8 +260,8 @@ main{flex:1;min-width:0;max-width:none;margin:0}
 </style>
 <link rel="stylesheet" href="duplicidades-review.css">
 <link rel="stylesheet" href="dashboard-executivo.css?v=20261001-remover-repetidos">
-<link rel="stylesheet" href="tema-relogio.css">
-<link rel="stylesheet" href="tema-contraste.css?v=20261001-badges-escuros">
+<link rel="stylesheet" href="tema-relogio.css?v=20261015-sidebar-fix">
+<link rel="stylesheet" href="tema-contraste.css?v=20261015-sidebar-fix">
 </head>
 <body>
 <div class="access-gate" id="accessGate">
@@ -1171,12 +1171,15 @@ function renderSheet(m, sheet){
   const init = pendingFilter || {};
   pendingFilter = null;
 
+  const dupPct = st.total ? Math.round(st.dup*100/st.total) : 0;
+  const valPct2 = st.total ? Math.round(st.val*100/st.total) : 0;
+  const pendPct2 = st.total ? Math.round(st.pend*100/st.total) : 0;
   m.innerHTML = `
     <div class="cards">
-      <div class="card clk" onclick="setQuick('all')"><h3>Total</h3><div class="v">${st.total.toLocaleString('pt-BR')}</div></div>
-      <div class="card clk" onclick="setQuick('dup')"><h3>Repetidos</h3><div class="v">${st.dup.toLocaleString('pt-BR')}</div></div>
-      <div class="card clk" onclick="setQuick('val')"><h3>Validados</h3><div class="v">${st.val.toLocaleString('pt-BR')}</div></div>
-      <div class="card clk" onclick="setQuick('pend')"><h3>Pendentes</h3><div class="v">${st.pend.toLocaleString('pt-BR')}</div></div>
+      <div class="card clk" onclick="setQuick('all')"><div class="card-top"><h3>Total</h3><span class="metric-icon">📋</span></div><div class="v">${st.total.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> Registros na aba</div><div class="metric-bar"><div class="metric-bar-fill" style="width:100%"></div></div></div>
+      <div class="card clk" onclick="setQuick('dup')"><div class="card-top"><h3>Repetidos</h3><span class="metric-icon">🔁</span></div><div class="v">${st.dup.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--vermelho)"></i> ${dupPct}% do total</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${dupPct}%"></div></div></div>
+      <div class="card clk" onclick="setQuick('val')"><div class="card-top"><h3>Validados</h3><span class="metric-icon">✓</span></div><div class="v">${st.val.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--verde)"></i> ${valPct2}% concluído</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${valPct2}%"></div></div></div>
+      <div class="card clk" onclick="setQuick('pend')"><div class="card-top"><h3>Pendentes</h3><span class="metric-icon">◷</span></div><div class="v">${st.pend.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--ambar)"></i> ${pendPct2}% aguardando</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pendPct2}%"></div></div></div>
     </div>
     ${assignmentPanelHtml(sheet).replace('<div class="panel assign-panel">','<div class="panel assign-panel" id="assignPanelSlot">')}
     <div class="panel">
@@ -1357,6 +1360,15 @@ function renderSheetCardsOnly(sheet){
     vs[1].textContent = st.dup.toLocaleString('pt-BR');
     vs[2].textContent = st.val.toLocaleString('pt-BR');
     vs[3].textContent = st.pend.toLocaleString('pt-BR');
+  }
+  const bars = cards.querySelectorAll('.metric-bar-fill');
+  if(bars.length>=4 && vs.length>=4){
+    const dupPct = st.total ? Math.round(st.dup*100/st.total) : 0;
+    const valPct = st.total ? Math.round(st.val*100/st.total) : 0;
+    const pendPct = st.total ? Math.round(st.pend*100/st.total) : 0;
+    bars[1].style.width = dupPct+'%';
+    bars[2].style.width = valPct+'%';
+    bars[3].style.width = pendPct+'%';
   }
 }
 
