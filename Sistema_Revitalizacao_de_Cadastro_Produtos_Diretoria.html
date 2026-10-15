@@ -205,7 +205,29 @@ main{padding:28px 32px 42px;max-width:1680px}
 .insight-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.insight{padding:15px;background:#f8faff;border:1px solid #e9eef6;border-radius:12px}.insight b{font-size:19px;color:var(--txt)}.insight span{display:block;color:var(--muted);font-size:11px;margin-top:4px}
 .tbl-wrap{border-radius:12px}thead{background:#123e8c}.toolbar input[type=text],.fld input,.fld textarea{border-color:#d7e0ec}
 .btn{border-radius:9px;box-shadow:0 4px 10px rgba(18,62,140,.15)}
-@media(max-width:1100px){.cards{grid-template-columns:repeat(2,1fr)}.exec-grid{grid-template-columns:1fr}}
+.exec-dark-charts{display:grid;grid-template-columns:1.6fr 1fr;gap:16px;margin-bottom:20px}
+.exec-dark-panel{background:#0e1a2c;border:1px solid #1c2a40;border-radius:16px;padding:22px 24px;color:#e7edf7}
+.exec-dark-panel h2{font-size:16px;font-weight:800;color:#fff;margin:0 0 4px 0}
+.exec-dark-sub{font-size:12px;color:#64779a;margin-bottom:18px}
+.exec-bar-legend{display:flex;gap:14px;float:right;margin-top:-30px}
+.exec-bar-legend span{display:flex;align-items:center;gap:6px;font-size:11.5px;color:#aebbd0}
+.exec-bar-legend i{width:9px;height:9px;border-radius:3px;display:inline-block}
+.exec-bars{display:flex;align-items:flex-end;justify-content:space-around;height:180px;border-bottom:1px solid #1c2a40;gap:10px;padding:0 4px;clear:both}
+.exec-bar-group{display:flex;gap:5px;align-items:flex-end;height:100%}
+.exec-bar{width:26px;border-radius:6px 6px 0 0;min-height:3px}
+.exec-bar-labels{display:flex;justify-content:space-around;margin-top:10px}
+.exec-bar-labels span{font-size:10.5px;color:#7f93b3;text-align:center;flex:1}
+.exec-donut-wrap{display:flex;justify-content:center;margin:4px 0 18px 0}
+.exec-donut{width:140px;height:140px;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.exec-donut-hole{width:86px;height:86px;border-radius:50%;background:#0e1a2c;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.exec-donut-hole b{font-size:18px;color:#fff}
+.exec-donut-hole small{font-size:9.5px;color:#7f93b3}
+.exec-legend-list{display:flex;flex-direction:column;gap:9px}
+.exec-legend-list div{display:flex;align-items:center;gap:9px;font-size:12.5px}
+.exec-legend-list i{width:9px;height:9px;border-radius:3px;display:inline-block}
+.exec-legend-list span{flex:1;color:#dbe4f3}
+.exec-legend-list b{color:#7f93b3}
+@media(max-width:1100px){.cards{grid-template-columns:repeat(2,1fr)}.exec-grid{grid-template-columns:1fr}.exec-dark-charts{grid-template-columns:1fr}}
 @media(max-width:720px){header{padding:16px 18px;min-height:88px}header img{height:46px;min-width:90px}header h1{font-size:18px}.header-meta{display:none}nav{top:88px;padding:0 10px}nav button{padding:13px 11px}main{padding:20px 14px}.cards{grid-template-columns:1fr}.page-title{align-items:flex-start;flex-direction:column}.hero-panel{align-items:flex-start;flex-direction:column}.progress-ring{width:112px;height:112px}.progress-ring:before{width:84px;height:84px}.insight-row{grid-template-columns:1fr}}
 
 
@@ -938,6 +960,69 @@ function renderPreserveState(){
 }
 
 // ===== RESUMO (cards clicáveis) =====
+function resumoFilialStats(){
+  const d=DATA[MAIN_SHEET]; if(!d) return [];
+  const filialIdx=d.headers.findIndex(h=>/filial|loja|unidade/i.test(h));
+  if(filialIdx<0) return [];
+  const map=new Map();
+  for(let i=0;i<rowCount(MAIN_SHEET);i++){
+    if(!isActive(MAIN_SHEET,i)) continue;
+    const r=getRow(MAIN_SHEET,i), f=String(r[filialIdx]||'—').trim()||'—';
+    if(!map.has(f)) map.set(f,{val:0,pend:0});
+    const o=map.get(f);
+    if(validated.has(MAIN_SHEET+'|'+i)) o.val++; else o.pend++;
+  }
+  return [...map.entries()].map(([filial,v])=>({filial,val:v.val,pend:v.pend,total:v.val+v.pend}))
+    .sort((a,b)=>b.total-a.total).slice(0,6);
+}
+function resumoResponsavelCounts(){
+  const totals={}; TASK_USERS.forEach(u=>totals[u.id]=0);
+  ['NCM_Mesma_Descricao','Descricoes_Duplicadas'].forEach(sheet=>{
+    if(!DATA[sheet]) return;
+    const {counts}=assignmentCounts(sheet);
+    TASK_USERS.forEach(u=>totals[u.id]+=(counts[u.id]||0));
+  });
+  return TASK_USERS.map(u=>({...u,count:totals[u.id]}));
+}
+function resumoChartsHtml(){
+  const filiais=resumoFilialStats();
+  const maxVal=Math.max(1,...filiais.map(f=>Math.max(f.val,f.pend)));
+  const bars=filiais.length?filiais.map(f=>`
+    <div class="exec-bar-group">
+      <div class="exec-bar" style="height:${Math.max(3,Math.round(f.val*100/maxVal))}%;background:linear-gradient(180deg,#6fe3b4,#1ea36f)" title="${f.val} validados"></div>
+      <div class="exec-bar" style="height:${Math.max(3,Math.round(f.pend*100/maxVal))}%;background:linear-gradient(180deg,#ffcf86,#c98a1f)" title="${f.pend} pendentes"></div>
+    </div>`).join('') : '';
+  const barLabels=filiais.map(f=>`<span>${escapeHtml(f.filial)}</span>`).join('');
+
+  const resp=resumoResponsavelCounts();
+  const totalResp=resp.reduce((s,u)=>s+u.count,0)||1;
+  let acc=0;
+  const segs=resp.map(u=>{
+    const from=acc/totalResp*100; acc+=u.count; const to=acc/totalResp*100;
+    return `${u.cor} ${from}% ${to}%`;
+  }).join(',');
+  const legend=resp.map(u=>`<div><i style="background:${u.cor}"></i><span>${escapeHtml(u.nome)}</span><b>${u.count.toLocaleString('pt-BR')}</b></div>`).join('');
+
+  return `
+    <div class="exec-dark-charts">
+      <div class="exec-dark-panel">
+        <h2>Validados vs Pendentes por Filial</h2>
+        <div class="exec-bar-legend"><span><i style="background:#53e5ad"></i>Validados</span><span><i style="background:#f3b94d"></i>Pendentes</span></div>
+        <div class="exec-dark-sub">Distribuição por filial de origem</div>
+        ${filiais.length?`<div class="exec-bars">${bars}</div><div class="exec-bar-labels">${barLabels}</div>`:'<p style="color:#64779a;font-size:13px">Sem dados de filial disponíveis.</p>'}
+      </div>
+      <div class="exec-dark-panel">
+        <h2>Distribuição por Responsável</h2>
+        <div class="exec-dark-sub">Tarefas atribuídas na base</div>
+        <div class="exec-donut-wrap">
+          <div class="exec-donut" style="background:conic-gradient(${segs || '#1c2a40 0% 100%'})">
+            <div class="exec-donut-hole"><b>${totalResp.toLocaleString('pt-BR')}</b><small>atribuídos</small></div>
+          </div>
+        </div>
+        <div class="exec-legend-list">${legend}</div>
+      </div>
+    </div>`;
+}
 function renderResumo(m){
   const st=computeStats(MAIN_SHEET), pct=st.total?Math.round(st.val*100/st.total):0;
   const now=new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
@@ -959,7 +1044,8 @@ function renderResumo(m){
     <div class="exec-grid">
       <section class="panel hero-panel"><div class="hero-copy"><div class="page-kicker">Programa de qualidade cadastral</div><h2>Decisões mais rápidas começam com dados confiáveis</h2><p>Centralize a análise, priorize duplicidades e acompanhe a validação da base em tempo real. Os indicadores são recalculados automaticamente a cada atualização.</p><div class="hero-actions"><button class="quick-btn primary" onclick="goTo('dashboard')">Abrir dashboard</button><button class="quick-btn" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})">Revisar pendências</button></div></div><div class="progress-ring" style="--p:${pct}"><div><strong>${pct}%</strong><span>concluído</span></div></div></section>
       <section class="panel"><h2>Pontos de atenção</h2><div class="attention-item"><div><strong>Duplicidades identificadas</strong><span>Filiais ${st.filiaisDup.join(', ')||'sem ocorrência'}</span></div><span class="attention-value">${st.dup.toLocaleString('pt-BR')}</span></div><div class="attention-item"><div><strong>Saldo para validação</strong><span>Itens ainda não concluídos</span></div><span class="attention-value" style="color:var(--ambar)!important">${st.pend.toLocaleString('pt-BR')}</span></div></section>
-    </div>`;
+    </div>
+    ${resumoChartsHtml()}`;
 }
 
 // ===== DASHBOARD em tempo real =====
