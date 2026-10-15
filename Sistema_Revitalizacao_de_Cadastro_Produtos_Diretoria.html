@@ -2132,7 +2132,7 @@ subscribeAssignmentsRealtime();
 // achar (por engano) que não há nada a migrar de importações antigas feitas só aqui.
 loadImportedFromDB().finally(()=>{ loadImportedFromSupabase(); subscribeImportedRealtime(); });
 // reforço: revalida com o banco periodicamente, caso o Realtime não entregue algum evento
-setInterval(loadStateFromSupabase, 1800000);
+setInterval(loadStateFromSupabase, 90000);
 setInterval(loadAssignmentsFromSupabase, 1800000);
 setInterval(loadImportedFromSupabase, 1800000);
 // auto-refresh do dashboard em tempo real
