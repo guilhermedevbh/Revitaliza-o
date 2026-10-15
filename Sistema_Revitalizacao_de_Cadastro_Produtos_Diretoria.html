@@ -181,6 +181,17 @@ main{padding:28px 32px 42px;max-width:1680px}
 .card h3{font-size:11px;letter-spacing:1.1px;margin:0;color:#63728a}
 .metric-icon{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--azul3);color:var(--azul);font-size:16px}
 .card:nth-child(2) .metric-icon{background:#fff0f3;color:var(--vermelho)}.card:nth-child(3) .metric-icon{background:#eafaf5;color:var(--verde)}.card:nth-child(4) .metric-icon{background:#fff7e7;color:var(--ambar)}.card:nth-child(5) .metric-icon{background:#f5eee0;color:#8a5a00}
+/* cards do Resumo com fundo tingido pela cor do indicador, como no modelo de referência */
+.cards-cols-5 .card:nth-child(1){background:linear-gradient(160deg,#16305c,#0e1a2c 65%)}
+.cards-cols-5 .card:nth-child(2){background:linear-gradient(160deg,#16305c,#0e1a2c 65%)}
+.cards-cols-5 .card:nth-child(3){background:linear-gradient(160deg,#123a2e,#0e1a2c 65%)}
+.cards-cols-5 .card:nth-child(4){background:linear-gradient(160deg,#3a2c10,#0e1a2c 65%)}
+.cards-cols-5 .card:nth-child(5){background:linear-gradient(160deg,#352a12,#0e1a2c 65%)}
+.cards-cols-5 .card:nth-child(1) .metric-icon,.cards-cols-5 .card:nth-child(2) .metric-icon{background:rgba(77,141,255,.18);color:#8bb4ff}
+.cards-cols-5 .card:nth-child(3) .metric-icon{background:rgba(83,229,173,.18);color:#53e5ad}
+.cards-cols-5 .card:nth-child(4) .metric-icon{background:rgba(243,185,77,.18);color:#f3b94d}
+.cards-cols-5 .card:nth-child(5) .metric-icon{background:rgba(214,161,74,.18);color:#d6a14a}
+.metric-spark{display:block;width:100%;height:28px;margin-top:10px}
 .card .v{font-size:34px;letter-spacing:-1px;color:var(--txt);line-height:1}.card .d{font-size:12px;margin-top:12px;color:#718096;line-height:1.4}
 .metric-foot{display:flex;align-items:center;gap:7px}.metric-dot{width:7px;height:7px;border-radius:50%;background:currentColor}
 .metric-bar{height:4px;border-radius:99px;background:var(--azul3);margin-top:14px;overflow:hidden}
@@ -217,6 +228,8 @@ main{padding:28px 32px 42px;max-width:1680px}
 .exec-bar{width:26px;border-radius:6px 6px 0 0;min-height:3px}
 .exec-bar-labels{display:flex;justify-content:space-around;margin-top:10px}
 .exec-bar-labels span{font-size:10.5px;color:#7f93b3;text-align:center;flex:1}
+.period-btn{background:#162438;color:#aebbd0;box-shadow:none}
+.period-btn.active{background:var(--azul);color:#fff}
 .resumo-donut-wrap{display:flex;justify-content:center;margin:4px 0 18px 0}
 .resumo-donut{width:140px;height:140px;border-radius:50%;display:flex;align-items:center;justify-content:center}
 .resumo-donut-hole{width:86px;height:86px;border-radius:50%;background:#0e1a2c;display:flex;flex-direction:column;align-items:center;justify-content:center}
@@ -1003,9 +1016,64 @@ function renderPreserveState(){
 
 // ===== RESUMO (cards clicáveis) =====
 // ===== filtros da tela Resumo (Filial / Status / Responsável / Busca) =====
-let resumoFilters = {filial:'', status:'', responsavel:'', q:''};
+let resumoFilters = {filial:'', status:'', responsavel:'', q:'', periodo:'', dataDe:'', dataAte:''};
+const RESUMO_PERIODOS = [
+  {id:'hoje', label:'Hoje'},
+  {id:'7d', label:'Últimos 7 dias'},
+  {id:'30d', label:'Últimos 30 dias'},
+  {id:'mes', label:'Mês atual'},
+  {id:'mes-passado', label:'Mês passado'},
+  {id:'ano', label:'Este ano'}
+];
 function resumoAnyFilterActive(){
-  const f=resumoFilters; return !!(f.filial||f.status||f.responsavel||f.q.trim());
+  const f=resumoFilters; return !!(f.filial||f.status||f.responsavel||f.q.trim()||f.periodo);
+}
+// intervalo [inicio,fim] do período escolhido, com base na data de validação/edição
+// (timestamps) — a base de produtos não tem "data de cadastro" própria, então o
+// filtro de período olha a última atividade (validação/edição) de cada linha.
+function resumoPeriodRange(){
+  const f=resumoFilters, now=new Date();
+  const startOfDay=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate(),0,0,0,0);
+  const endOfDay=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate(),23,59,59,999);
+  if(f.periodo==='hoje') return [startOfDay(now), endOfDay(now)];
+  if(f.periodo==='7d'){ const s=new Date(now); s.setDate(s.getDate()-6); return [startOfDay(s), endOfDay(now)]; }
+  if(f.periodo==='30d'){ const s=new Date(now); s.setDate(s.getDate()-29); return [startOfDay(s), endOfDay(now)]; }
+  if(f.periodo==='mes') return [new Date(now.getFullYear(),now.getMonth(),1), endOfDay(now)];
+  if(f.periodo==='mes-passado'){ const s=new Date(now.getFullYear(),now.getMonth()-1,1); const e=new Date(now.getFullYear(),now.getMonth(),0,23,59,59,999); return [s,e]; }
+  if(f.periodo==='ano') return [new Date(now.getFullYear(),0,1), endOfDay(now)];
+  if(f.periodo==='custom' && f.dataDe && f.dataAte){
+    const de=new Date(f.dataDe+'T00:00:00'), ate=new Date(f.dataAte+'T23:59:59');
+    if(!isNaN(de) && !isNaN(ate)) return [de, ate];
+  }
+  return null;
+}
+function resumoSetPeriodo(id){
+  resumoFilters.periodo = (resumoFilters.periodo===id) ? '' : id;
+  refreshResumoBody();
+  const bar=document.getElementById('rfPeriodBar');
+  if(bar) bar.outerHTML = resumoPeriodBarHtml();
+}
+function resumoApplyCustomRange(){
+  const de=document.getElementById('rfDataDe'), ate=document.getElementById('rfDataAte');
+  resumoFilters.dataDe = de?de.value:'';
+  resumoFilters.dataAte = ate?ate.value:'';
+  resumoFilters.periodo = (resumoFilters.dataDe && resumoFilters.dataAte) ? 'custom' : '';
+  refreshResumoBody();
+  const bar=document.getElementById('rfPeriodBar');
+  if(bar) bar.outerHTML = resumoPeriodBarHtml();
+}
+function resumoPeriodBarHtml(){
+  const f=resumoFilters;
+  return `
+    <div class="toolbar" id="rfPeriodBar" style="margin-top:10px">
+      <span class="d" style="align-self:center;margin-right:2px">PERÍODO:</span>
+      ${RESUMO_PERIODOS.map(p=>`<button class="btn period-btn ${f.periodo===p.id?'active':''}" onclick="resumoSetPeriodo('${p.id}')">${p.label}</button>`).join('')}
+      <span class="d" style="align-self:center;margin:0 2px 0 10px">DE</span>
+      <input type="date" id="rfDataDe" value="${escapeHtml(f.dataDe)}" style="flex:0 0 150px">
+      <span class="d" style="align-self:center">ATÉ</span>
+      <input type="date" id="rfDataAte" value="${escapeHtml(f.dataAte)}" style="flex:0 0 150px">
+      <button class="btn" onclick="resumoApplyCustomRange()">Aplicar</button>
+    </div>`;
 }
 function resumoFilialOptions(){
   const d=DATA[MAIN_SHEET]; if(!d) return [];
@@ -1045,22 +1113,48 @@ function resumoMatchingIndexes(){
   const f=resumoFilters;
   const owned=f.responsavel?resumoOwnedDescriptions(f.responsavel):null;
   const q=f.q.trim().toLowerCase();
+  const range=resumoPeriodRange();
   const out=[];
   for(let i=0;i<rowCount(MAIN_SHEET);i++){
     if(!isActive(MAIN_SHEET,i)) continue;
     const r=getRow(MAIN_SHEET,i);
     if(f.filial && filialIdx>=0 && String(r[filialIdx]||'').trim()!==f.filial) continue;
-    const isVal=validated.has(MAIN_SHEET+'|'+i);
+    const key=MAIN_SHEET+'|'+i;
+    const isVal=validated.has(key);
     if(f.status==='val' && !isVal) continue;
     if(f.status==='pend' && isVal) continue;
+    if(range){
+      const ts=timestamps[key];
+      if(!ts) continue;
+      const t=new Date(ts).getTime();
+      if(t<range[0].getTime() || t>range[1].getTime()) continue;
+    }
     if(owned && descIdx>=0 && !owned.has(String(r[descIdx]||'').trim().replace(/\s+/g,' ').toUpperCase())) continue;
     if(q && r.join(' ').toLowerCase().indexOf(q)===-1) continue;
     out.push(i);
   }
   return out;
 }
+// mini-gráfico com a quantidade de validações por dia nos últimos 7 dias (dado real,
+// a partir de timestamps[] — não é decorativo).
+function resumoValidatedSparkline(){
+  const days=7;
+  const buckets=new Array(days).fill(0);
+  const now=new Date(); now.setHours(0,0,0,0);
+  validated.forEach(key=>{
+    if(!key.startsWith(MAIN_SHEET+'|')) return;
+    const ts=timestamps[key]; if(!ts) return;
+    const d=new Date(ts); d.setHours(0,0,0,0);
+    const diffDays=Math.round((now-d)/86400000);
+    if(diffDays>=0 && diffDays<days) buckets[days-1-diffDays]++;
+  });
+  const max=Math.max(1,...buckets);
+  const w=160,h=28,stepX=w/(days-1);
+  const pts=buckets.map((v,i)=>`${(i*stepX).toFixed(1)},${(h-(v/max)*(h-4)-2).toFixed(1)}`).join(' ');
+  return `<svg class="metric-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="#53e5ad" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
 function resumoClearFilters(){
-  resumoFilters={filial:'',status:'',responsavel:'',q:''};
+  resumoFilters={filial:'',status:'',responsavel:'',q:'',periodo:'',dataDe:'',dataAte:''};
   if(current==='resumo') renderResumo(document.getElementById('main'));
 }
 function resumoFilterBarHtml(){
@@ -1084,6 +1178,7 @@ function resumoFilterBarHtml(){
         <input type="text" id="rfBusca" placeholder="🔍 Busca livre (código / descrição)" value="${escapeHtml(resumoFilters.q)}" oninput="resumoFilters.q=this.value;refreshResumoBody()" style="flex:1 1 220px">
         <button class="btn gray" onclick="resumoClearFilters()">✕ Limpar</button>
       </div>
+      ${resumoPeriodBarHtml()}
       <div class="d" id="rfCount" style="margin-top:8px"></div>
     </div>`;
 }
@@ -1182,7 +1277,7 @@ function refreshResumoBody(){
     <div class="cards cards-cols-5">
       <div class="card clk" onclick="goTo('${MAIN_SHEET}')"><div class="card-top"><h3>Total na base</h3><span class="metric-icon">🗂️</span></div><div class="v">${totalBase.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> ${desativados.toLocaleString('pt-BR')} desativado(s)</div><div class="metric-bar"><div class="metric-bar-fill" style="width:100%"></div></div></div>
       <div class="card clk" onclick="goTo('${MAIN_SHEET}')"><div class="card-top"><h3>Produtos ativos</h3><span class="metric-icon">▦</span></div><div class="v">${st.total.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--azul)"></i> Base consolidada</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pctBase}%"></div></div></div>
-      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyValidated:true})"><div class="card-top"><h3>Validados${active?' (filtro)':''}</h3><span class="metric-icon">✓</span></div><div class="v">${valShown.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--verde)"></i> ${pctShown}% ${active?'do filtro':'concluído'}</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pctShown}%"></div></div></div>
+      <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyValidated:true})"><div class="card-top"><h3>Validados${active?' (filtro)':''}</h3><span class="metric-icon">✓</span></div><div class="v">${valShown.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--verde)"></i> ${pctShown}% ${active?'do filtro':'concluído'}</div>${resumoValidatedSparkline()}</div>
       <div class="card clk" onclick="goTo('${MAIN_SHEET}',{onlyPending:true})"><div class="card-top"><h3>Pendentes${active?' (filtro)':''}</h3><span class="metric-icon">◷</span></div><div class="v">${pendShown.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:var(--ambar)"></i> ${pctPendShown}% ${active?'do filtro':'aguardando análise'}</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pctPendShown}%"></div></div></div>
       <div class="card clk" onclick="goTo('deactivationReport')"><div class="card-top"><h3>Separados p/ desativação</h3><span class="metric-icon">🗃️</span></div><div class="v">${separados.toLocaleString('pt-BR')}</div><div class="d metric-foot"><i class="metric-dot" style="color:#8a5a00"></i> No Relatório de Desativação</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${pctSep}%"></div></div></div>
     </div>
