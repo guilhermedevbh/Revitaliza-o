@@ -236,6 +236,27 @@ header img#logo{width:176px;height:64px;min-width:176px;object-fit:contain;objec
 @media(max-width:720px){header img#logo{width:132px;height:48px;min-width:132px}}
 
 
+/* ===== menu lateral (sidebar) escuro, estilo do modelo de referência ===== */
+#appBody{display:flex;align-items:stretch}
+nav{background:#0b1626!important;border-bottom:0!important;border-right:1px solid #1c2a40;box-shadow:none!important;
+  padding:18px 10px!important;display:flex;flex-direction:column;align-items:stretch;gap:2px;
+  position:sticky;top:104px;width:230px;flex:0 0 230px;max-height:calc(100vh - 104px);overflow-y:auto;z-index:40}
+#navScroll{display:flex;flex-direction:column;gap:2px;overflow:visible;flex:1;min-width:0}
+nav button{background:none;border:none;border-left:3px solid transparent;border-radius:9px;
+  padding:11px 13px;font-size:13px;font-weight:600;color:#aebbd0;cursor:pointer;text-align:left;
+  white-space:normal;line-height:1.3;border-bottom:0!important;transition:.15s}
+nav button:hover{background:#13203399;color:#f3f6fc}
+nav button.active{background:#15243b;color:#fff!important;border-left-color:#4d8dff}
+nav button[data-id="config"]{border-left:3px solid transparent!important;margin-left:0!important;margin-top:10px;padding-top:11px;border-top:1px solid #1c2a40!important}
+main{flex:1;min-width:0;max-width:none;margin:0}
+@media(max-width:860px){
+  #appBody{flex-direction:column}
+  nav{position:static;width:auto;flex:none;max-height:none;flex-direction:row;overflow-x:auto;overflow-y:visible;border-right:0;border-bottom:1px solid #1c2a40}
+  #navScroll{flex-direction:row}
+  nav button{white-space:nowrap;border-left:0;border-bottom:3px solid transparent!important}
+  nav button.active{border-bottom-color:#4d8dff!important}
+  nav button[data-id="config"]{margin-top:0;border-top:0!important;border-left:1px solid #1c2a40!important}
+}
 </style>
 <link rel="stylesheet" href="duplicidades-review.css">
 <link rel="stylesheet" href="dashboard-executivo.css?v=20261001-remover-repetidos">
@@ -270,8 +291,10 @@ try{
   <img id="logo" alt="Emtel"/>
   <div><h1>RevitaCad</h1><p>Revitalização inteligente de produtos e fornecedores</p></div><div class="header-meta"><input id="userNameInput" class="user-name-input" placeholder="👤 Seu nome" oninput="setReviewUserName(this.value)"><div class="status-chip" id="syncIndicator"><i></i> <span id="syncIndicatorText">Conectando...</span></div><button class="global-control" type="button" onclick="logoutAccessGate()" title="Sair do sistema">🚪 Sair</button></div>
 </header>
+<div id="appBody">
 <nav id="nav"><div id="navScroll"></div></nav>
 <main id="main"></main>
+</div>
 
 <div class="modal" id="modal">
   <div class="box">
