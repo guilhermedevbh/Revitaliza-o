@@ -387,7 +387,7 @@
     const target=String(description||'').trim().toUpperCase();if(!target)return null;
     for(let i=0;i<rowCount(sheet);i++){
       if(String(getRow(sheet,i)[di]||'').trim().toUpperCase()!==target)continue;
-      const info=assignments[syncKey(sheet,i)];
+      const info=assignments[sheet+'|'+i];
       if(info){const u=taskUserById(info.responsavel);if(u)return u.nome}
     }
     return null;
@@ -412,15 +412,14 @@
     }
     if(!matches.length)return 0;
     description=String(sourceRow[sourceDescIdx]??'');
-    const analyticalKey=syncKey(sheet,idx);
     if(shouldValidate){
-      if(!requireUserAlways()){ validated.delete(analyticalKey); return 0; }
+      if(!requireUserAlways()){ validated.delete(sheet+'|'+idx); return 0; }
     } else if(!requireUser()){
-      validated.add(analyticalKey);
+      validated.add(sheet+'|'+idx);
       return 0;
     }
     if(shouldValidate){
-      const assignInfo=(typeof assignments!=='undefined')?assignments[analyticalKey]:null;
+      const assignInfo=(typeof assignments!=='undefined')?assignments[sheet+'|'+idx]:null;
       const atribuidoPara=assignInfo&&typeof taskUserById==='function'?(taskUserById(assignInfo.responsavel)||{}).nome||null:null;
       matches.forEach(i=>{
         validated.add(MAIN_SHEET+'|'+i);
@@ -775,17 +774,17 @@
   restoreMovementSnapshot();
   loadDesativacaoFromSupabase();
   subscribeDesativacaoRealtime();
-  setInterval(loadDesativacaoFromSupabase, 1800000);
+  setInterval(loadDesativacaoFromSupabase, 30000);
   loadHistoricoFromSupabase();
   subscribeHistoricoRealtime();
-  setInterval(loadHistoricoFromSupabase, 1800000);
+  setInterval(loadHistoricoFromSupabase, 30000);
   loadValidationHistoryFromSupabase();
   subscribeValidationHistoryRealtime();
-  setInterval(loadValidationHistoryFromSupabase, 1800000);
+  setInterval(loadValidationHistoryFromSupabase, 30000);
   loadEditTrackingFromSupabase();
   subscribeEditTrackingRealtime();
-  setInterval(loadEditTrackingFromSupabase, 1800000);
+  setInterval(loadEditTrackingFromSupabase, 30000);
   loadActiveReportFromSupabase();
   subscribeActiveReportRealtime();
-  setInterval(loadActiveReportFromSupabase, 1800000);
+  setInterval(loadActiveReportFromSupabase, 30000);
 })();
