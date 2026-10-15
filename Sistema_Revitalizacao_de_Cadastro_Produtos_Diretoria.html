@@ -748,12 +748,12 @@ function rebuildDuplicateAnalysis(){
     if(!isActive(MAIN_SHEET,i))continue;
     const row=getRow(MAIN_SHEET,i),description=String(row[descIdx]??'').trim(),descriptionKey=normalize(description);
     if(!descriptionKey)continue;
-    if(!descriptionGroups.has(descriptionKey))descriptionGroups.set(descriptionKey,{description,count:0,key:descriptionKey});
-    descriptionGroups.get(descriptionKey).count++;
+    if(!descriptionGroups.has(descriptionKey))descriptionGroups.set(descriptionKey,{description,count:0,key:descriptionKey,idxs:[]});
+    const dg=descriptionGroups.get(descriptionKey); dg.count++; dg.idxs.push(i);
     if(ncmIdx>=0){
       const ncm=String(row[ncmIdx]??'').trim(),key=normalize(ncm)+'~'+descriptionKey;
-      if(!ncmDescriptionGroups.has(key))ncmDescriptionGroups.set(key,{ncm,description,count:0,key});
-      ncmDescriptionGroups.get(key).count++;
+      if(!ncmDescriptionGroups.has(key))ncmDescriptionGroups.set(key,{ncm,description,count:0,key,idxs:[]});
+      const ng=ncmDescriptionGroups.get(key); ng.count++; ng.idxs.push(i);
     }
   }
   // chave de validação/atribuição/exclusão baseada no CONTEÚDO (descrição/NCM), não na posição:
@@ -761,11 +761,17 @@ function rebuildDuplicateAnalysis(){
   // de ordem conforme produtos vão sendo validados em qualquer lugar do site), então usar a
   // posição do array como chave fazia uma validação "pular" de produto silenciosamente sempre
   // que a lista mudava de tamanho — por isso os números divergiam entre usuários.
+  // "idxs" (linhas da planilha principal que formam o grupo) também fica guardado: é usado
+  // por syncValidated() para saber se um grupo já está validado olhando se TODOS os produtos
+  // dele já estão validados na planilha principal — uma fonte da verdade estável que não
+  // depende de qual esquema de chave (posição/conteúdo) estava ativo quando a validação do
+  // grupo foi feita, então nenhuma validação antiga "some" quando esse esquema muda.
   if(DATA.Descricoes_Duplicadas){
     const ordered=[...descriptionGroups.values()].filter(x=>x.count>1).sort((a,b)=>a.description.localeCompare(b.description,'pt-BR'));
     DATA.Descricoes_Duplicadas.headers=['Descricao','Quantidade'];
     DATA.Descricoes_Duplicadas.rows=ordered.map(x=>[x.description,x.count]);
     DATA.Descricoes_Duplicadas.rowKeys=ordered.map(x=>x.key);
+    DATA.Descricoes_Duplicadas.mainIndices=ordered.map(x=>x.idxs);
     imported.Descricoes_Duplicadas=[];
   }
   if(DATA.NCM_Mesma_Descricao){
@@ -773,8 +779,19 @@ function rebuildDuplicateAnalysis(){
     DATA.NCM_Mesma_Descricao.headers=['Pos.IPI/NCM','Descricao','Qtd'];
     DATA.NCM_Mesma_Descricao.rows=ordered.map(x=>[x.ncm,x.description,x.count]);
     DATA.NCM_Mesma_Descricao.rowKeys=ordered.map(x=>x.key);
+    DATA.NCM_Mesma_Descricao.mainIndices=ordered.map(x=>x.idxs);
     imported.NCM_Mesma_Descricao=[];
   }
+}
+// "validado" para NCM_Mesma_Descricao/Descricoes_Duplicadas é derivado dos produtos da
+// planilha principal que formam o grupo (todos validados = grupo validado) — não da chave
+// própria da linha analítica, que historicamente mudou de esquema (posição/conteúdo) mais de
+// uma vez. Para as demais abas, continua sendo o flag normal de validated[].
+function syncValidated(sheet, i){
+  const d = DATA[sheet];
+  const idxs = d && d.mainIndices ? d.mainIndices[i] : null;
+  if(idxs && idxs.length) return idxs.every(mi=>validated.has(MAIN_SHEET+'|'+mi));
+  return validated.has(syncKey(sheet,i));
 }
 // chave estável de sincronização: usa a chave por conteúdo (rowKeys) quando a aba é
 // recalculada a cada render (NCM_Mesma_Descricao/Descricoes_Duplicadas); nas demais abas
@@ -802,7 +819,7 @@ function computeStats(sheet){
   for(let i=0;i<n;i++){
     if(!isActive(sheet,i)) continue;
     total++;
-    if(validated.has(syncKey(sheet,i))) val++;
+    if(syncValidated(sheet,i)) val++;
     const r = getRow(sheet,i);
     const key = (descIdx>=0 ? String(r[descIdx]||'').trim().toUpperCase() : '') +
                 '||' + (ncmIdx>=0 ? String(r[ncmIdx]||'').trim() : '');
@@ -1147,7 +1164,7 @@ function drawRows(sheet){
   const n = rowCount(sheet);
   const rowOrder=Array.from({length:n},(_,i)=>i);
   if(sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas'){
-    rowOrder.sort((a,b)=>Number(validated.has(syncKey(sheet,a)))-Number(validated.has(syncKey(sheet,b)))||a-b);
+    rowOrder.sort((a,b)=>Number(syncValidated(sheet,a))-Number(syncValidated(sheet,b))||a-b);
   }
   for(const i of rowOrder){
     if(deletes.has(syncKey(sheet,i))) continue;
@@ -1158,7 +1175,7 @@ function drawRows(sheet){
     if(f.ncm    && f.ncmIdx>=0    && String(row[f.ncmIdx]??'').toLowerCase().indexOf(f.ncm)===-1) continue;
     if(f.desc   && f.descIdx>=0   && String(row[f.descIdx]??'').toLowerCase().indexOf(f.desc)===-1) continue;
     const isDup = f.dupSet.has(i);
-    const isVal = validated.has(key);
+    const isVal = syncValidated(sheet,i);
     if(f.onlyDup && !isDup) continue;
     if(f.onlyValidated && !isVal) continue;
     if(f.onlyPending && isVal) continue;
@@ -1216,7 +1233,7 @@ function drawRows(sheet){
 
 function toggleValidate(sheet, idx){
   const key = syncKey(sheet, idx);
-  const shouldValidate=!validated.has(key);
+  const shouldValidate=!syncValidated(sheet, idx);
   if(shouldValidate) validated.add(key);
   else validated.delete(key);
   touchTimestamp(key);
@@ -1848,7 +1865,7 @@ function buildSheetExport(sheet, onlyChanged){
   const n = rowCount(sheet);
   for(let i=0;i<n;i++){
     const key = syncKey(sheet,i);
-    const valTxt = validated.has(key)?'VALIDADO':'PENDENTE';
+    const valTxt = syncValidated(sheet,i)?'VALIDADO':'PENDENTE';
     const isImported = i >= d.rows.length;
     if(deletes.has(key)){
       if(onlyChanged) out.push([...rawRow(sheet,i),'EXCLUIDO']);
@@ -2167,7 +2184,7 @@ setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementByI
 // usuário ver números bem diferentes dos outros (ex.: lógica de cálculo antiga rodando).
 // Isso checa periodicamente um arquivo leve (version.txt, sem custo de banco de dados)
 // e avisa com um banner quando há uma versão mais nova publicada.
-const APP_VERSION = '2026-10-15-1830';
+const APP_VERSION = '2026-10-15-1845';
 async function checkForNewVersion(){
   try{
     const res = await fetch('version.txt?t='+Date.now(), {cache:'no-store'});
