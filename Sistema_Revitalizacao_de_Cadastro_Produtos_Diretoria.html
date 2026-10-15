@@ -7,7 +7,8 @@
 <link rel="icon" href="logo-emtel-transparente.png">
 <script>try{document.documentElement.dataset.theme=localStorage.getItem('emtel_theme')||((window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light')}catch(e){document.documentElement.dataset.theme='light'}</script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <style>
 :root{--azul:#1e4fb8;--azul2:#143a8a;--vermelho:#e3122b;--bg:#f4f6fb;--card:#fff;--txt:#1a2238;--muted:#6b7280;--bd:#e5e7eb;--amarelo:#fff7c2;}
 *{box-sizing:border-box;margin:0;padding:0;font-family:'Segoe UI',Roboto,sans-serif}
@@ -328,21 +329,110 @@ const lastEditors = JSON.parse(localStorage.getItem('emtel_editors')||'{}');
 const recentLocalChanges = {};
 const RECENT_LOCAL_CHANGE_MS = 15000;
 
-// ===== Supabase: banco de dados compartilhado das validações/edições/exclusões =====
-const SUPABASE_URL = 'https://chgiayjwhhkyjaykguyv.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_ewTRyjtc2i-Vb4zB_DbL-g_QSQ02s6P';
-const supa = (typeof supabase!=='undefined' && supabase.createClient)
-  ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+// ===== Firebase/Firestore: banco de dados compartilhado das validações/edições/exclusões =====
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCn4Q0yg7blrauq9sjbKVZIv38zhouPJPQ",
+  authDomain: "revitacad-c9d02.firebaseapp.com",
+  projectId: "revitacad-c9d02",
+  storageBucket: "revitacad-c9d02.firebasestorage.app",
+  messagingSenderId: "251646638041",
+  appId: "1:251646638041:web:7786e2aacd813c47a20bc8"
+};
+// camada de compatibilidade: imita só o pedaço da API do supabase-js que o site usa
+// (from().select/upsert/insert/delete, channel().on('postgres_changes').subscribe()),
+// mas por baixo salva tudo no Firestore — assim o resto do código (centenas de chamadas
+// "supa.xxx" espalhadas pelo site) não precisou ser reescrito uma por uma.
+function createFirestoreShim(config){
+  if(typeof firebase==='undefined') return null;
+  if(!firebase.apps.length) firebase.initializeApp(config);
+  const db = firebase.firestore();
+  function docId(table, row){
+    if(row.key!==undefined && row.key!==null) return String(row.key);
+    if(row.id!==undefined && row.id!==null) return String(row.id);
+    return db.collection(table).doc().id;
+  }
+  function writeOp(table, rows, merge){
+    const arr = Array.isArray(rows) ? rows : [rows];
+    const batch = db.batch();
+    arr.forEach(row=>batch.set(db.collection(table).doc(docId(table,row)), row, {merge}));
+    return { then(onFulfilled){ batch.commit().then(()=>onFulfilled({error:null})).catch(error=>onFulfilled({error})); return this; } };
+  }
+  function from(table){
+    return {
+      select(){
+        let orderField=null, orderDesc=false, rangeFrom=null, rangeTo=null, limitN=null;
+        const builder = {
+          order(field, opts){ orderField=field; orderDesc = !!(opts && opts.ascending===false); return builder; },
+          range(from,to){ rangeFrom=from; rangeTo=to; return builder; },
+          limit(n){ limitN=n; return builder; },
+          then(onFulfilled){
+            let q = db.collection(table);
+            if(orderField) q = q.orderBy(orderField, orderDesc?'desc':'asc');
+            q.get().then(snap=>{
+              let data = snap.docs.map(d=>{
+                const v = d.data();
+                return Object.assign({}, v, { key: v.key!==undefined?v.key:d.id, id: v.id!==undefined?v.id:d.id });
+              });
+              if(rangeFrom!=null) data = data.slice(rangeFrom, rangeTo+1);
+              if(limitN!=null) data = data.slice(0, limitN);
+              onFulfilled({data, error:null});
+            }).catch(error=>onFulfilled({data:null, error}));
+            return this;
+          }
+        };
+        return builder;
+      },
+      upsert(rows){ return writeOp(table, rows, true); },
+      insert(rows){ return writeOp(table, rows, false); },
+      delete(){
+        return { eq(_field, value){
+          return { then(onFulfilled){
+            db.collection(table).doc(String(value)).delete()
+              .then(()=>onFulfilled({error:null})).catch(error=>onFulfilled({error}));
+            return this;
+          } };
+        } };
+      }
+    };
+  }
+  function channel(name){
+    const chan = { _unsubs: [] };
+    chan.on = function(_evt, filter, callback){
+      chan._table = filter.table; chan._filterEvent = filter.event; chan._callback = callback;
+      return chan;
+    };
+    chan.subscribe = function(statusCb){
+      let first = true;
+      const unsub = db.collection(chan._table).onSnapshot(snapshot=>{
+        if(first){ first=false; if(statusCb) statusCb('SUBSCRIBED'); return; }
+        snapshot.docChanges().forEach(change=>{
+          const eventType = change.type==='added'?'INSERT':change.type==='modified'?'UPDATE':'DELETE';
+          if(chan._filterEvent!=='*' && chan._filterEvent!==eventType) return;
+          const v = change.doc.data();
+          const row = Object.assign({}, v, { key: v.key!==undefined?v.key:change.doc.id, id: v.id!==undefined?v.id:change.doc.id });
+          chan._callback({ eventType, new: eventType==='DELETE'?null:row, old: eventType==='DELETE'?row:null });
+        });
+      }, ()=>{ if(statusCb) statusCb('CHANNEL_ERROR'); });
+      chan._unsubs.push(unsub);
+      return chan;
+    };
+    chan.unsubscribe = function(){ chan._unsubs.forEach(fn=>fn()); };
+    return chan;
+  }
+  return { from, channel, removeAllChannels(){} };
+}
+const supa = createFirestoreShim(FIREBASE_CONFIG);
 
 // O Supabase/PostgREST limita cada select('*') a no máximo 1000 linhas por padrão,
 // sem avisar — acima disso a base fica "cortada" de forma diferente para cada usuário
 // (a ordem não é garantida), fazendo os totais de validados divergirem entre navegadores.
 // Esta função busca TODAS as linhas da tabela, paginando em blocos de 1000.
-async function fetchAllRows(table){
+async function fetchAllRows(table, orderField){
+  orderField = orderField || 'key';
   const pageSize = 1000;
   let from = 0, all = [];
   for(;;){
-    const { data, error } = await supa.from(table).select('*').order('key').range(from, from+pageSize-1);
+    const { data, error } = await supa.from(table).select('*').order(orderField).range(from, from+pageSize-1);
     if(error) throw error;
     if(!data || !data.length) break;
     all = all.concat(data);
@@ -558,7 +648,7 @@ function assignTask(sheet, idx, userId){
   markUserInteracting();
   const quem = ensureReviewUserName();
   if(!quem) return;
-  const key = syncKey(sheet,idx);
+  const key = sheet+'|'+idx;
   const current = assignments[key];
   const historico = current ? [...(current.historico||[]), {responsavel:current.responsavel, atribuidoPor:current.atribuidoPor, atribuidoEm:current.atribuidoEm}] : [];
   if(!userId) delete assignments[key];
@@ -582,7 +672,7 @@ function assignmentCounts(sheet){
   for(let i=0;i<n;i++){
     if(!isActive(sheet,i)) continue;
     total++;
-    const a = assignments[syncKey(sheet,i)];
+    const a = assignments[sheet+'|'+i];
     if(a && counts[a.responsavel]!==undefined) counts[a.responsavel]++;
   }
   return {counts, total};
@@ -653,7 +743,7 @@ async function fetchAllImportedRows(){
   const pageSize = 1000;
   let from = 0, all = [];
   for(;;){
-    const { data, error } = await supa.from('produtos_importados').select('*').order('id').range(from, from+pageSize-1);
+    const { data, error } = await supa.from('produtos_importados').select('*').order('criado_em').range(from, from+pageSize-1);
     if(error) throw error;
     if(!data || !data.length) break;
     all = all.concat(data);
@@ -665,7 +755,8 @@ async function fetchAllImportedRows(){
 async function saveImportedToSupabase(sheet, rows, fileName){
   if(!supa || !rows || !rows.length) return;
   const quem = reviewUserName() || 'Anônimo';
-  const payload = rows.map(linha=>({ sheet, linha, usuario: quem, arquivo: fileName||null }));
+  const base = Date.now();
+  const payload = rows.map((linha,i)=>({ sheet, linha, usuario: quem, arquivo: fileName||null, criado_em: new Date(base+i).toISOString() }));
   const chunkSize = 300;
   for(let i=0;i<payload.length;i+=chunkSize){
     supa.from('produtos_importados').insert(payload.slice(i,i+chunkSize)).then(({error})=>{ if(error) console.warn('Falha ao sincronizar produtos importados:', error.message); });
@@ -754,37 +845,20 @@ function rebuildDuplicateAnalysis(){
     }
   }
   if(DATA.Descricoes_Duplicadas){
-    const entries1=[...descriptionGroups.entries()].filter(([,x])=>x.count>1).sort((a,b)=>a[1].description.localeCompare(b[1].description,'pt-BR'));
     DATA.Descricoes_Duplicadas.headers=['Descricao','Quantidade'];
-    DATA.Descricoes_Duplicadas.rows=entries1.map(([,x])=>[x.description,x.count]);
-    // chave estável (descrição normalizada) em vez da posição no array — a posição muda toda
-    // vez que um grupo entra/sai da lista (validação/exclusão em qualquer lugar do site), o
-    // que fazia "validado"/"atribuído" apontar pro grupo errado e divergir entre usuários.
-    DATA.Descricoes_Duplicadas.rowKeys=entries1.map(([k])=>k);
+    DATA.Descricoes_Duplicadas.rows=[...descriptionGroups.values()].filter(x=>x.count>1).sort((a,b)=>a.description.localeCompare(b.description,'pt-BR')).map(x=>[x.description,x.count]);
     imported.Descricoes_Duplicadas=[];
   }
   if(DATA.NCM_Mesma_Descricao){
-    const entries2=[...ncmDescriptionGroups.entries()].filter(([,x])=>x.count>1).sort((a,b)=>a[1].description.localeCompare(b[1].description,'pt-BR')||a[1].ncm.localeCompare(b[1].ncm,'pt-BR'));
     DATA.NCM_Mesma_Descricao.headers=['Pos.IPI/NCM','Descricao','Qtd'];
-    DATA.NCM_Mesma_Descricao.rows=entries2.map(([,x])=>[x.ncm,x.description,x.count]);
-    DATA.NCM_Mesma_Descricao.rowKeys=entries2.map(([k])=>k);
+    DATA.NCM_Mesma_Descricao.rows=[...ncmDescriptionGroups.values()].filter(x=>x.count>1).sort((a,b)=>a.description.localeCompare(b.description,'pt-BR')||a.ncm.localeCompare(b.ncm,'pt-BR')).map(x=>[x.ncm,x.description,x.count]);
     imported.NCM_Mesma_Descricao=[];
   }
 }
 
 // ===== contagem de duplicidade em tempo real =====
-// chave usada pra guardar validação/exclusão/atribuição/edição de uma linha. Para as abas
-// analíticas (NCM Mesma Descrição / Descrições Duplicadas), cujas linhas são grupos recalculados
-// a cada render, usa uma chave baseada no conteúdo (descrição/NCM) em vez da posição no array —
-// a posição muda sempre que um grupo entra/sai da lista, o que fazia o status "vazar" pro grupo
-// errado e aparecer diferente entre usuários (ou até no mesmo navegador, com o tempo).
-function syncKey(sheet, i){
-  const d = DATA[sheet];
-  if(d && d.rowKeys && d.rowKeys[i]!==undefined) return sheet+'|'+d.rowKeys[i];
-  return sheet+'|'+i;
-}
-function getRow(sheet, i){ return edits[syncKey(sheet,i)] || rawRow(sheet, i); }
-function isActive(sheet, i){ return !deletes.has(syncKey(sheet,i)); }
+function getRow(sheet, i){ return edits[sheet+'|'+i] || rawRow(sheet, i); }
+function isActive(sheet, i){ return !deletes.has(sheet+'|'+i); }
 
 function computeStats(sheet){
   const d = DATA[sheet]; if(!d) return {total:0,dup:0,val:0,pend:0,filiaisDup:[]};
@@ -799,7 +873,7 @@ function computeStats(sheet){
   for(let i=0;i<n;i++){
     if(!isActive(sheet,i)) continue;
     total++;
-    if(validated.has(syncKey(sheet,i))) val++;
+    if(validated.has(sheet+'|'+i)) val++;
     const r = getRow(sheet,i);
     const key = (descIdx>=0 ? String(r[descIdx]||'').trim().toUpperCase() : '') +
                 '||' + (ncmIdx>=0 ? String(r[ncmIdx]||'').trim() : '');
@@ -1156,11 +1230,11 @@ function drawRows(sheet){
   const n = rowCount(sheet);
   const rowOrder=Array.from({length:n},(_,i)=>i);
   if(sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas'){
-    rowOrder.sort((a,b)=>Number(validated.has(syncKey(sheet,a)))-Number(validated.has(syncKey(sheet,b)))||a-b);
+    rowOrder.sort((a,b)=>Number(validated.has(sheet+'|'+a))-Number(validated.has(sheet+'|'+b))||a-b);
   }
   for(const i of rowOrder){
-    if(deletes.has(syncKey(sheet,i))) continue;
-    const key = syncKey(sheet,i);
+    if(deletes.has(sheet+'|'+i)) continue;
+    const key = sheet+'|'+i;
     const row = getRow(sheet,i);
     if(f.q && row.join(' ').toLowerCase().indexOf(f.q)===-1) continue;
     if(f.filial && f.filialIdx>=0 && String(row[f.filialIdx]??'').toLowerCase().indexOf(f.filial)===-1) continue;
@@ -1224,7 +1298,7 @@ function drawRows(sheet){
 }
 
 function toggleValidate(sheet, idx){
-  const key = syncKey(sheet,idx);
+  const key = sheet+'|'+idx;
   if(sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas'){
     const assignInfo = assignments[key];
     if(assignInfo && assignInfo.responsavel){
@@ -1607,8 +1681,8 @@ function deleteCurrent(){
 }
 function deleteRow(sheet, idx){
   if(!confirm('Excluir este registro?')) return;
-  deletes.add(syncKey(sheet,idx));
-  touchTimestamp(syncKey(sheet,idx));
+  deletes.add(sheet+'|'+idx);
+  touchTimestamp(sheet+'|'+idx);
   persist(); render();
 }
 
@@ -1620,7 +1694,7 @@ function bulkDeleteDuplicates(sheet){
   let dupCount = 0;
   const n = rowCount(sheet);
   for(let i=0;i<n;i++){
-    if(deletes.has(syncKey(sheet,i))) continue;
+    if(deletes.has(sheet+'|'+i)) continue;
     const r = getRow(sheet,i);
     const key = descIdx>=0 && ncmIdx>=0 ? (r[descIdx]+'||'+r[ncmIdx]) : r.join('||');
     if(seen.has(key)) dupCount++; else seen.set(key,i);
@@ -1629,10 +1703,10 @@ function bulkDeleteDuplicates(sheet){
   if(!confirm(`Excluir ${dupCount} linha(s) duplicada(s)? (mantém a primeira ocorrência)`)) return;
   seen.clear();
   for(let i=0;i<n;i++){
-    if(deletes.has(syncKey(sheet,i))) continue;
+    if(deletes.has(sheet+'|'+i)) continue;
     const r = getRow(sheet,i);
     const key = descIdx>=0 && ncmIdx>=0 ? (r[descIdx]+'||'+r[ncmIdx]) : r.join('||');
-    if(seen.has(key)) { deletes.add(syncKey(sheet,i)); touchTimestamp(syncKey(sheet,i)); } else seen.set(key,i);
+    if(seen.has(key)) { deletes.add(sheet+'|'+i); touchTimestamp(sheet+'|'+i); } else seen.set(key,i);
   }
   persist(); render();
 }
@@ -1867,7 +1941,7 @@ function buildSheetExport(sheet, onlyChanged){
   const out = [headers];
   const n = rowCount(sheet);
   for(let i=0;i<n;i++){
-    const key = syncKey(sheet,i);
+    const key = sheet+'|'+i;
     const valTxt = validated.has(key)?'VALIDADO':'PENDENTE';
     const isImported = i >= d.rows.length;
     if(deletes.has(key)){
@@ -2182,6 +2256,6 @@ setInterval(()=>{if(current==='dashboard'){const el=document.querySelector('.exe
 setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementById('main')); }, 15000);
 </script>
 
-<script src="duplicidades-review.js?v=20261014-stablekeys"></script>
+<script src="duplicidades-review.js?v=20261015-firebase"></script>
 <script src="tema-relogio.js?v=20260923-mantem-input-nome"></script>
 </body></html>

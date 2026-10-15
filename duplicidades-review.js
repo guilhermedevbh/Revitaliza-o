@@ -116,7 +116,7 @@
   async function loadEditTrackingFromSupabase(){
     if(typeof supa==='undefined'||!supa) return;
     try{
-      const data = typeof fetchAllRows==='function' ? await fetchAllRows('edicoes_pendentes') : (await supa.from('edicoes_pendentes').select('*')).data||[];
+      const data = typeof fetchAllRows==='function' ? await fetchAllRows('edicoes_pendentes','id') : (await supa.from('edicoes_pendentes').select('*')).data||[];
       const remoteIds=new Set(data.map(r=>r.id));
       data.forEach(applyRemoteEditTracking);
       // registros de edição criados antes desta sincronização existir ficaram só neste navegador — sobe pro banco agora
@@ -360,7 +360,7 @@
   async function loadValidationHistoryFromSupabase(){
     if(typeof supa==='undefined'||!supa) return;
     try{
-      const data = typeof fetchAllRows==='function' ? await fetchAllRows('historico_validacao_produtos') : (await supa.from('historico_validacao_produtos').select('*')).data||[];
+      const data = typeof fetchAllRows==='function' ? await fetchAllRows('historico_validacao_produtos','id') : (await supa.from('historico_validacao_produtos').select('*')).data||[];
       const remoteIds=new Set(data.map(r=>r.id));
       data.forEach(applyRemoteValidationHistory);
       validationHistory.forEach(entry=>{ if(!entry.id) entry.id=genId(); if(!remoteIds.has(entry.id)) validationHistoryInsert(entry); });
@@ -387,7 +387,7 @@
     const target=String(description||'').trim().toUpperCase();if(!target)return null;
     for(let i=0;i<rowCount(sheet);i++){
       if(String(getRow(sheet,i)[di]||'').trim().toUpperCase()!==target)continue;
-      const info=assignments[syncKey(sheet,i)];
+      const info=assignments[sheet+'|'+i];
       if(info){const u=taskUserById(info.responsavel);if(u)return u.nome}
     }
     return null;
@@ -413,13 +413,13 @@
     if(!matches.length)return 0;
     description=String(sourceRow[sourceDescIdx]??'');
     if(shouldValidate){
-      if(!requireUserAlways()){ validated.delete(syncKey(sheet,idx)); return 0; }
+      if(!requireUserAlways()){ validated.delete(sheet+'|'+idx); return 0; }
     } else if(!requireUser()){
-      validated.add(syncKey(sheet,idx));
+      validated.add(sheet+'|'+idx);
       return 0;
     }
     if(shouldValidate){
-      const assignInfo=(typeof assignments!=='undefined')?assignments[syncKey(sheet,idx)]:null;
+      const assignInfo=(typeof assignments!=='undefined')?assignments[sheet+'|'+idx]:null;
       const atribuidoPara=assignInfo&&typeof taskUserById==='function'?(taskUserById(assignInfo.responsavel)||{}).nome||null:null;
       matches.forEach(i=>{
         validated.add(MAIN_SHEET+'|'+i);
