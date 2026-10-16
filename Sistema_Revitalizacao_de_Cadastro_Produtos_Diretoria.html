@@ -745,24 +745,46 @@ function rebuildDuplicateAnalysis(){
     if(!isActive(MAIN_SHEET,i))continue;
     const row=getRow(MAIN_SHEET,i),description=String(row[descIdx]??'').trim(),descriptionKey=normalize(description);
     if(!descriptionKey)continue;
-    if(!descriptionGroups.has(descriptionKey))descriptionGroups.set(descriptionKey,{description,count:0});
-    descriptionGroups.get(descriptionKey).count++;
+    if(!descriptionGroups.has(descriptionKey))descriptionGroups.set(descriptionKey,{description,count:0,idxs:[]});
+    const dg=descriptionGroups.get(descriptionKey); dg.count++; dg.idxs.push(i);
     if(ncmIdx>=0){
       const ncm=String(row[ncmIdx]??'').trim(),key=normalize(ncm)+'||'+descriptionKey;
-      if(!ncmDescriptionGroups.has(key))ncmDescriptionGroups.set(key,{ncm,description,count:0});
-      ncmDescriptionGroups.get(key).count++;
+      if(!ncmDescriptionGroups.has(key))ncmDescriptionGroups.set(key,{ncm,description,count:0,idxs:[]});
+      const ng=ncmDescriptionGroups.get(key); ng.count++; ng.idxs.push(i);
     }
   }
+  // idxs (linhas da planilha principal que formam cada grupo) fica guardado para
+  // groupValidated() poder enxergar validações feitas por OUTRA aba (ex.: um grupo validado
+  // em NCM Mesma Descrição também marca os produtos da planilha principal como validados —
+  // isso deixa Descrições Duplicadas refletir esse trabalho, mesmo sem clicar validar aqui
+  // também, sem depender de nenhuma mudança no esquema de chave usado até aqui).
   if(DATA.Descricoes_Duplicadas){
+    const ordered=[...descriptionGroups.values()].filter(x=>x.count>1).sort((a,b)=>a.description.localeCompare(b.description,'pt-BR'));
     DATA.Descricoes_Duplicadas.headers=['Descricao','Quantidade'];
-    DATA.Descricoes_Duplicadas.rows=[...descriptionGroups.values()].filter(x=>x.count>1).sort((a,b)=>a.description.localeCompare(b.description,'pt-BR')).map(x=>[x.description,x.count]);
+    DATA.Descricoes_Duplicadas.rows=ordered.map(x=>[x.description,x.count]);
+    DATA.Descricoes_Duplicadas.mainIndices=ordered.map(x=>x.idxs);
     imported.Descricoes_Duplicadas=[];
   }
   if(DATA.NCM_Mesma_Descricao){
+    const ordered=[...ncmDescriptionGroups.values()].filter(x=>x.count>1).sort((a,b)=>a.description.localeCompare(b.description,'pt-BR')||a.ncm.localeCompare(b.ncm,'pt-BR'));
     DATA.NCM_Mesma_Descricao.headers=['Pos.IPI/NCM','Descricao','Qtd'];
-    DATA.NCM_Mesma_Descricao.rows=[...ncmDescriptionGroups.values()].filter(x=>x.count>1).sort((a,b)=>a.description.localeCompare(b.description,'pt-BR')||a.ncm.localeCompare(b.ncm,'pt-BR')).map(x=>[x.ncm,x.description,x.count]);
+    DATA.NCM_Mesma_Descricao.rows=ordered.map(x=>[x.ncm,x.description,x.count]);
+    DATA.NCM_Mesma_Descricao.mainIndices=ordered.map(x=>x.idxs);
     imported.NCM_Mesma_Descricao=[];
   }
+}
+// "validado" para uma linha de NCM Mesma Descrição/Descrições Duplicadas: considera tanto o
+// flag próprio da linha (aba|posição, o mecanismo de sempre) quanto o fato de TODOS os
+// produtos da planilha principal daquele grupo já estarem validados (o que acontece quando o
+// grupo foi validado pela OUTRA aba analítica, já que validar um grupo sempre marca os
+// produtos correspondentes da planilha principal). Um "OU" entre os dois sinais: nunca esconde
+// uma validação que já existia, só reconhece outras que o flag próprio nunca viu.
+function groupValidated(sheet, i){
+  const key = sheet+'|'+i;
+  if(validated.has(key)) return true;
+  const d = DATA[sheet];
+  const idxs = d && d.mainIndices ? d.mainIndices[i] : null;
+  return !!(idxs && idxs.length && idxs.every(mi=>validated.has(MAIN_SHEET+'|'+mi)));
 }
 
 // ===== contagem de duplicidade em tempo real =====
@@ -782,7 +804,7 @@ function computeStats(sheet){
   for(let i=0;i<n;i++){
     if(!isActive(sheet,i)) continue;
     total++;
-    if(validated.has(sheet+'|'+i)) val++;
+    if(groupValidated(sheet,i)) val++;
     const r = getRow(sheet,i);
     const key = (descIdx>=0 ? String(r[descIdx]||'').trim().toUpperCase() : '') +
                 '||' + (ncmIdx>=0 ? String(r[ncmIdx]||'').trim() : '');
@@ -1127,7 +1149,7 @@ function drawRows(sheet){
   const n = rowCount(sheet);
   const rowOrder=Array.from({length:n},(_,i)=>i);
   if(sheet==='NCM_Mesma_Descricao'||sheet==='Descricoes_Duplicadas'){
-    rowOrder.sort((a,b)=>Number(validated.has(sheet+'|'+a))-Number(validated.has(sheet+'|'+b))||a-b);
+    rowOrder.sort((a,b)=>Number(groupValidated(sheet,a))-Number(groupValidated(sheet,b))||a-b);
   }
   for(const i of rowOrder){
     if(deletes.has(sheet+'|'+i)) continue;
@@ -1138,7 +1160,7 @@ function drawRows(sheet){
     if(f.ncm    && f.ncmIdx>=0    && String(row[f.ncmIdx]??'').toLowerCase().indexOf(f.ncm)===-1) continue;
     if(f.desc   && f.descIdx>=0   && String(row[f.descIdx]??'').toLowerCase().indexOf(f.desc)===-1) continue;
     const isDup = f.dupSet.has(i);
-    const isVal = validated.has(key);
+    const isVal = groupValidated(sheet,i);
     if(f.onlyDup && !isDup) continue;
     if(f.onlyValidated && !isVal) continue;
     if(f.onlyPending && isVal) continue;
@@ -1196,7 +1218,7 @@ function drawRows(sheet){
 
 function toggleValidate(sheet, idx){
   const key = sheet+'|'+idx;
-  const shouldValidate=!validated.has(key);
+  const shouldValidate=!groupValidated(sheet, idx);
   if(shouldValidate) validated.add(key);
   else validated.delete(key);
   touchTimestamp(key);
@@ -1827,7 +1849,7 @@ function buildSheetExport(sheet, onlyChanged){
   const n = rowCount(sheet);
   for(let i=0;i<n;i++){
     const key = sheet+'|'+i;
-    const valTxt = validated.has(key)?'VALIDADO':'PENDENTE';
+    const valTxt = groupValidated(sheet,i)?'VALIDADO':'PENDENTE';
     const isImported = i >= d.rows.length;
     if(deletes.has(key)){
       if(onlyChanged) out.push([...rawRow(sheet,i),'EXCLUIDO']);
@@ -2147,7 +2169,7 @@ setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementByI
 // como um "Repetidos" maior que o Total — só acontece em código desatualizado).
 // Isso checa periodicamente um arquivo leve (version.txt, sem custo de banco de dados)
 // e avisa com um banner quando há uma versão mais nova publicada.
-const APP_VERSION = '2026-10-15-1900';
+const APP_VERSION = '2026-10-16-0100';
 async function checkForNewVersion(){
   try{
     const res = await fetch('version.txt?t='+Date.now(), {cache:'no-store'});
