@@ -579,20 +579,9 @@ function assignmentCounts(sheet){
   const counts = {}; TASK_USERS.forEach(u=>counts[u.id]=0);
   let total = 0;
   const n = rowCount(sheet);
-  const isAnalytical = sheet==='NCM_Mesma_Descricao' || sheet==='Descricoes_Duplicadas';
   for(let i=0;i<n;i++){
     if(!isActive(sheet,i)) continue;
     total++;
-    // já validado: credita quem efetivamente validou (mesmo sem ter passado por "Atribuir
-    // tarefa" antes) — é isso que a "Distribuição de tarefas" deve refletir, já que boa
-    // parte do trabalho é feita sem atribuição prévia. Ainda pendente: mantém mostrando
-    // quem está designado pra fazer.
-    if(isAnalytical && groupValidated(sheet,i)){
-      const nome = groupValidatorName(sheet,i);
-      const u = nome ? TASK_USERS.find(x=>x.nome.toLowerCase()===String(nome).trim().toLowerCase()) : null;
-      if(u) counts[u.id]++;
-      continue;
-    }
     const a = assignments[sheet+'|'+i];
     if(a && counts[a.responsavel]!==undefined) counts[a.responsavel]++;
   }
@@ -796,17 +785,6 @@ function groupValidated(sheet, i){
   const d = DATA[sheet];
   const idxs = d && d.mainIndices ? d.mainIndices[i] : null;
   return !!(idxs && idxs.length && idxs.every(mi=>validated.has(MAIN_SHEET+'|'+mi)));
-}
-// nome de quem validou um grupo: olha o editor do flag próprio da linha e, se não tiver
-// (grupo validado pela OUTRA aba, via produtos da planilha principal), o editor registrado
-// num dos produtos do grupo.
-function groupValidatorName(sheet, i){
-  const own = lastEditors[sheet+'|'+i];
-  if(own) return own;
-  const d = DATA[sheet];
-  const idxs = d && d.mainIndices ? d.mainIndices[i] : null;
-  if(idxs) for(const mi of idxs){ const n = lastEditors[MAIN_SHEET+'|'+mi]; if(n) return n; }
-  return null;
 }
 
 // ===== contagem de duplicidade em tempo real =====
@@ -2191,7 +2169,7 @@ setInterval(()=>{ if(current==='protheus') renderProtheus(document.getElementByI
 // como um "Repetidos" maior que o Total — só acontece em código desatualizado).
 // Isso checa periodicamente um arquivo leve (version.txt, sem custo de banco de dados)
 // e avisa com um banner quando há uma versão mais nova publicada.
-const APP_VERSION = '2026-10-16-0115';
+const APP_VERSION = '2026-10-16-0100';
 async function checkForNewVersion(){
   try{
     const res = await fetch('version.txt?t='+Date.now(), {cache:'no-store'});
